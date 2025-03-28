@@ -23,18 +23,29 @@ export function createProgram<T = string>(
   };
   
   // Examples for few-shot learning
-  let examples: ProgramExample[] = [];
+  let exampleList: ProgramExample[] = [];
   
   const builder: ProgramBuilder<T> = {
     template,
-    examples,
+    exampleList,
     modelDef, // Add modelDef property to the builder object
     
     withExamples(newExamples: ProgramExample[]): ProgramBuilder<T> {
       // Create a new builder with the updated examples
       const newBuilder = { ...this };
-      newBuilder.examples = [...examples, ...newExamples];
+      newBuilder.exampleList = [...exampleList, ...newExamples];
       return newBuilder;
+    },
+    
+    examples(inputOutputMap: Record<string, any>): ProgramBuilder<T> {
+      // Convert the input-output map to ProgramExample array
+      const newExamples: ProgramExample[] = Object.entries(inputOutputMap).map(([input, output]) => ({
+        input: { input },
+        output: typeof output === 'string' ? output : JSON.stringify(output, null, 2)
+      }));
+      
+      // Create a new builder with the updated examples
+      return this.withExamples(newExamples);
     },
     
     using(model: ModelDefinition | string): ProgramBuilder<T> {
@@ -66,10 +77,10 @@ export function createProgram<T = string>(
       prompt += 'You are an expert programmer. Generate code based on the following instructions and examples.\n\n';
       
       // Add examples if available
-      if (this.examples.length > 0) {
+      if (this.exampleList.length > 0) {
         prompt += 'EXAMPLES:\n\n';
         
-        for (const example of this.examples) {
+        for (const example of this.exampleList) {
           prompt += 'Input:\n';
           prompt += JSON.stringify(example.input, null, 2) + '\n\n';
           prompt += 'Output:\n';
@@ -141,10 +152,17 @@ export function createProgram<T = string>(
     },
     
     persist(id: string): ProgramBuilder<T> {
-      // Store the program for later use
-      // This is a placeholder for now - would need a storage mechanism
-      console.log(`Program ${id} persisted for later use`);
-      return this;
+      // In a real implementation, this would store the program in a persistent store
+      // For now, we'll just log it and return the same builder
+      console.log(`Program "${id}" has been persisted for later use`);
+      
+      // We could add the program to a registry for later retrieval
+      // This would be similar to how the ModelRegistry works
+      // ProgramRegistry.registerProgram(id, this);
+      
+      // For demonstration purposes, we'll attach the ID to the builder
+      const newBuilder = { ...this, id };
+      return newBuilder;
     }
   };
   

@@ -54,13 +54,16 @@ export interface ProgramBuilder<T = string> {
   template: PromptTemplate;
   
   /** Examples for few-shot learning */
-  examples: ProgramExample[];
+  exampleList: ProgramExample[];
   
   /** The model definition to use for generation */
   modelDef: ModelDefinition;
   
   /** Add examples to the program builder */
   withExamples(examples: ProgramExample[]): ProgramBuilder<T>;
+  
+  /** Add examples using a simpler input-output format */
+  examples(inputOutputMap: Record<string, any>): ProgramBuilder<T>;
   
   /** Specify the model to use for generation */
   using(model: ModelDefinition | string): ProgramBuilder<T>;

@@ -103,6 +103,12 @@ export interface PromptTemplate<T = any> {
   
   /** Clone this template */
   clone: () => PromptTemplate<T>;
+  
+  /** Add training examples to improve the prompt */
+  train: (examples: Array<{ text: any, output: T }>) => PromptTemplate<T>;
+  
+  /** Specify the model to use for this prompt */
+  using: (model: string | import('../types').ModelDefinition) => PromptTemplate<T>;
 }
 
 /**

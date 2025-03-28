@@ -14,7 +14,7 @@ describe('Program Generation', () => {
     
     // Set up the mock responses
     const mockAdapter = ModelRegistry.getAdapter(selvedge.mock('test-model'));
-    if (mockAdapter && 'setResponses' in mockAdapter) {
+    if (mockAdapter && typeof mockAdapter.setResponses === 'function') {
       mockAdapter.setResponses({
         chat: (messages) => {
           const userMessage = messages.find(m => m.role === 'user')?.content || '';
@@ -35,8 +35,8 @@ describe('Program Generation', () => {
     const program = selvedge.program`Generate a function that ${task => task}`;
     expect(program).toBeDefined();
     expect(program.template).toBeDefined();
-    expect(program.examples).toBeInstanceOf(Array);
-    expect(program.examples.length).toBe(0);
+    expect(program.exampleList).toBeInstanceOf(Array);
+    expect(program.exampleList.length).toBe(0);
   });
   
   it('should add examples to a program', () => {
@@ -48,8 +48,18 @@ describe('Program Generation', () => {
         }
       ]);
     
-    expect(program.examples.length).toBe(1);
-    expect(program.examples[0].input.task).toBe('sorts an array');
+    expect(program.exampleList.length).toBe(1);
+    expect(program.exampleList[0].input.task).toBe('sorts an array');
+  });
+  
+  it('should add examples using the examples method', () => {
+    const program = selvedge.program`Generate a function that sorts an array`
+      .examples({
+        "sort numbers": "function sortNumbers(arr) {\n  return [...arr].sort((a, b) => a - b);\n}"
+      });
+    
+    expect(program.exampleList.length).toBe(1);
+    expect(program.exampleList[0].input.input).toBe('sort numbers');
   });
   
   it('should generate code using the mock adapter', async () => {

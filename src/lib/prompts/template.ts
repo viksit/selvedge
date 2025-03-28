@@ -133,6 +133,8 @@ function createTemplateFromBase<T>(base: PromptTemplate<any>, overrides: Partial
     prefix: base.prefix,
     suffix: base.suffix,
     clone: base.clone,
+    train: base.train,
+    using: base.using,
     
     // Apply any overrides
     ...overrides
@@ -282,6 +284,39 @@ export function createTemplate<T = any>(
     clone(): PromptTemplate<T> {
       // Create a deep copy of the template
       return createTemplateFromBase<T>(this, {});
+    },
+    
+    train(examples: Array<{ text: any, output: T }>): PromptTemplate<T> {
+      // Create a new template with training examples
+      const examplesText = examples.map(ex => {
+        const input = typeof ex.text === 'string' ? ex.text : JSON.stringify(ex.text, null, 2);
+        const output = typeof ex.output === 'string' ? ex.output : JSON.stringify(ex.output, null, 2);
+        return `Input: ${input}\nOutput: ${output}\n---\n`;
+      }).join('\n');
+      
+      // Add examples as a prefix
+      const prefixText = `Examples:\n${examplesText}\n\nNow, process the following input:`;
+      return this.prefix(prefixText);
+    },
+    
+    using(model: string | ModelDefinition): PromptTemplate<T> {
+      // Create a new template with the specified model
+      const self = this;
+      return createTemplateFromBase<T>(this, {
+        execute: async function<R = T>(
+          variables: PromptVariables,
+          options: PromptExecutionOptions = {}
+        ): Promise<R> {
+          // Override the model in options
+          const newOptions = {
+            ...options,
+            model
+          };
+          
+          // Call the original execute method with the new options
+          return self.execute<R>(variables, newOptions);
+        }
+      });
     }
   };
   
