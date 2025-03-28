@@ -1,9 +1,9 @@
 /**
  * Core functionality for the Selvedge library
  */
-
 import { ModelRegistry } from './models';
 import { ModelProvider, SelvedgeInstance, ModelDefinition } from './types';
+import { createTemplate } from './prompts/template';
 
 /**
  * The main Selvedge instance that provides access to all library functionality
@@ -109,20 +109,22 @@ export const selvedge: SelvedgeInstance = {
    * 
    * @param strings - Template string parts
    * @param values - Values for template substitution
-   * @returns A prompt builder object
+   * @returns A prompt template object
+   * 
+   * @example
+   * ```typescript
+   * const sentiment = selvedge.prompt`
+   *   Analyze the sentiment in this text: ${text}
+   *   Rate from -1.0 (negative) to 1.0 (positive)
+   * `.returns<{ score: number }>();
+   * 
+   * // Later, execute the prompt
+   * const result = await sentiment.execute({ text: "I love this product!" });
+   * console.log(result.score); // 0.9
+   * ```
    */
   prompt(strings: TemplateStringsArray, ...values: any[]): any {
-    // This is a temporary placeholder implementation for Phase 1
-    // Will be properly implemented in Phase 2
-    const templateText = strings.reduce((result, str, i) => {
-      return result + str + (values[i] || '');
-    }, '');
-    
-    return {
-      returns: () => ({
-        _template: templateText // Store but don't use yet
-      })
-    };
+    return createTemplate(strings, values);
   }
 };
 

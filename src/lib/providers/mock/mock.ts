@@ -50,6 +50,24 @@ export class MockModelAdapter implements ModelAdapter {
   }
   
   /**
+   * Set the mock responses for testing
+   * 
+   * @param responses - Object containing completion and chat responses
+   */
+  public setResponses(responses: { completion?: string; chat?: string; promptMap?: Record<string, string> }): void {
+    this.config.responses = this.config.responses || {};
+    if (responses.completion) {
+      this.config.responses.completion = responses.completion;
+    }
+    if (responses.chat) {
+      this.config.responses.chat = responses.chat;
+    }
+    if (responses.promptMap) {
+      this.config.responses.promptMap = responses.promptMap;
+    }
+  }
+  
+  /**
    * Send a completion request to mock provider
    * 
    * @param prompt - The prompt text

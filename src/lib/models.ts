@@ -1,85 +1,99 @@
 /**
  * Model registry and adapters for different LLM providers
  */
-import { ModelDefinition, ModelProvider, SelvedgeInstance } from './types';
+import { ModelDefinition, ModelProvider, SelvedgeInstance, ModelAdapter } from './types';
 import { OpenAIModelAdapter, AnthropicModelAdapter, MockModelAdapter } from './providers';
 
 /** 
- * Map of registered model aliases to their definitions
+ * Maps model aliases to model definitions 
+ * @internal
  */
 const registeredModels: Map<string, ModelDefinition> = new Map();
 
 /**
- * Map of model definitions to their corresponding adapters
+ * Maps model provider + name to adapter instances
+ * @internal
  */
 const modelAdapters: Map<string, any> = new Map();
 
 /**
- * Helper class for model registration and management
+ * Registry for model definitions and adapters
  */
 export class ModelRegistry {
   /**
    * Register multiple models with aliases
    * 
    * @param modelMap - Object mapping aliases to model definitions
-   * @param instance - The selvedge instance for chaining
-   * @returns The updated selvedge instance
+   * @param selvedge - The selvedge instance to return
+   * @returns The selvedge instance for chaining
    */
-  static registerModels(
+  public static registerModels(
     modelMap: Record<string, ModelDefinition>,
-    instance: SelvedgeInstance
+    selvedge: SelvedgeInstance
   ): SelvedgeInstance {
-    // Register each model by its alias
+    // Add each model to the registry
     Object.entries(modelMap).forEach(([alias, definition]) => {
       registeredModels.set(alias, definition);
-      
-      // Create model adapter if it doesn't exist yet
-      const modelKey = `${definition.provider}:${definition.model}`;
-      if (!modelAdapters.has(modelKey)) {
-        modelAdapters.set(modelKey, ModelRegistry.createAdapter(definition));
-      }
     });
     
-    return instance;
+    return selvedge;
   }
   
   /**
-   * Get a registered model by its alias
+   * Get a model definition by its alias
    * 
    * @param alias - The model alias
-   * @returns The model definition or undefined if not found
+   * @returns The model definition, or undefined if not found
    */
-  static getModel(alias: string): ModelDefinition | undefined {
+  public static getModel(alias: string): ModelDefinition | undefined {
     return registeredModels.get(alias);
   }
   
   /**
-   * Get the adapter for a model definition
+   * Get or create a model adapter for a given model definition
    * 
    * @param modelDef - The model definition
-   * @returns The model adapter
+   * @returns The adapter for the model
    */
-  static getAdapter(modelDef: ModelDefinition): any {
-    const modelKey = `${modelDef.provider}:${modelDef.model}`;
-    return modelAdapters.get(modelKey);
-  }
-  
-  /**
-   * Create a model adapter based on the provider
-   * 
-   * @param modelDef - The model definition
-   * @returns A new model adapter instance
-   */
-  private static createAdapter(modelDef: ModelDefinition): any {
+  public static getAdapter(modelDef: ModelDefinition): ModelAdapter | undefined {
+    const cacheKey = `${modelDef.provider}:${modelDef.model}`;
+    
+    // Check if we already have an adapter instance
+    if (modelAdapters.has(cacheKey)) {
+      return modelAdapters.get(cacheKey);
+    }
+    
+    // Create the appropriate adapter based on the provider
+    let adapter: ModelAdapter | undefined;
+    
     switch (modelDef.provider) {
       case ModelProvider.OPENAI:
-        return new OpenAIModelAdapter(modelDef);
+        adapter = new OpenAIModelAdapter(modelDef);
+        break;
+        
       case ModelProvider.ANTHROPIC:
-        return new AnthropicModelAdapter(modelDef);
+        adapter = new AnthropicModelAdapter(modelDef);
+        break;
+        
       case ModelProvider.MOCK:
-        return new MockModelAdapter(modelDef);
+        adapter = new MockModelAdapter(modelDef);
+        break;
+        
       default:
         throw new Error(`Unsupported model provider: ${modelDef.provider}`);
     }
+    
+    // Cache the adapter
+    modelAdapters.set(cacheKey, adapter);
+    return adapter;
+  }
+
+  /**
+   * Clear all registered models and adapters
+   * Primarily used for testing purposes
+   */
+  public static clear(): void {
+    registeredModels.clear();
+    modelAdapters.clear();
   }
 }
