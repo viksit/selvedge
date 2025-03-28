@@ -62,6 +62,26 @@ export const selvedge: SelvedgeInstance = {
       model,
     };
   },
+  
+  /**
+   * Create a mock model definition (for testing)
+   * 
+   * @param model - The mock model identifier
+   * @returns A model definition object
+   * 
+   * @example
+   * ```typescript
+   * const testModel = selvedge.mock("test-model", {
+   *   responses: { completion: "Mock response" }
+   * });
+   * ```
+   */
+  mock(model: string): ModelDefinition {
+    return {
+      provider: ModelProvider.MOCK,
+      model,
+    };
+  },
 
   /**
    * Create a template for program generation

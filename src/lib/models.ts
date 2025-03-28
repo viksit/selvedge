@@ -2,7 +2,7 @@
  * Model registry and adapters for different LLM providers
  */
 import { ModelDefinition, ModelProvider, SelvedgeInstance } from './types';
-import { OpenAIModelAdapter, AnthropicModelAdapter } from './providers';
+import { OpenAIModelAdapter, AnthropicModelAdapter, MockModelAdapter } from './providers';
 
 /** 
  * Map of registered model aliases to their definitions
@@ -76,6 +76,8 @@ export class ModelRegistry {
         return new OpenAIModelAdapter(modelDef);
       case ModelProvider.ANTHROPIC:
         return new AnthropicModelAdapter(modelDef);
+      case ModelProvider.MOCK:
+        return new MockModelAdapter(modelDef);
       default:
         throw new Error(`Unsupported model provider: ${modelDef.provider}`);
     }

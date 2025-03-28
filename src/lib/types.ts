@@ -8,6 +8,7 @@
 export enum ModelProvider {
   OPENAI = 'openai',
   ANTHROPIC = 'anthropic',
+  MOCK = 'mock',
 }
 
 /**
@@ -42,6 +43,11 @@ export interface SelvedgeInstance {
    * Create an Anthropic model definition
    */
   anthropic(model: string): ModelDefinition;
+  
+  /**
+   * Create a mock model definition (for testing)
+   */
+  mock(model: string): ModelDefinition;
   
   /**
    * Create a template for program generation
