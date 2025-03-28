@@ -1,7 +1,7 @@
 {
   "name": "selvedge",
   "version": "0.1.0",
-  "description": "A TypeScript library",
+  "description": "Weaving prompts and code into structured, resilient patterns that won't unravel under pressure",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
@@ -19,12 +19,25 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "@types/node": "^20.0.0",
     "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "openai": "^4.28.0",
+    "@anthropic-ai/sdk": "^0.16.0",
+    "zod": "^3.22.4"
   },
   "peerDependencies": {
     "typescript": "^5.0.0"
   },
-  "keywords": [],
+  "keywords": [
+    "llm",
+    "ai",
+    "prompt-engineering",
+    "openai",
+    "anthropic",
+    "typescript"
+  ],
   "author": "",
   "license": "MIT",
   "repository": {
