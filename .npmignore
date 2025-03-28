@@ -1,0 +1,17 @@
+# Source files
+src/
+tests/
+
+# Config files
+tsconfig.json
+.gitignore
+bun.lockb
+
+# Development files
+node_modules/
+.github/
+.vscode/
+
+# Misc
+*.log
+*.tgz

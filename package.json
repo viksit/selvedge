@@ -1,0 +1,38 @@
+{
+  "name": "selvedge",
+  "version": "0.1.0",
+  "description": "A TypeScript library",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "bun run build:clean && bun run build:js && bun run build:types",
+    "build:clean": "rm -rf dist",
+    "build:js": "bun build ./src/index.ts --outdir ./dist --target node --minify",
+    "build:types": "tsc --emitDeclarationOnly --outDir dist",
+    "test": "bun test",
+    "prepublishOnly": "bun run build"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.0.0"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yourusername/selvedge.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/selvedge/issues"
+  },
+  "homepage": "https://github.com/yourusername/selvedge#readme"
+}
