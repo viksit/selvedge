@@ -52,7 +52,7 @@ export interface SelvedgeInstance {
   /**
    * Create a template for program generation
    */
-  program(strings: TemplateStringsArray, ...values: any[]): any;
+  program<T = string>(strings: TemplateStringsArray, ...values: any[]): import('./programs/types').ProgramBuilder<T>;
   
   /**
    * Create a prompt template
@@ -86,4 +86,7 @@ export interface ModelAdapter {
   
   /** Generate chat completions */
   chat(messages: any[], options?: Record<string, any>): Promise<any>;
+  
+  /** Optional method to set mock responses for testing */
+  setResponses?(responses: { completion?: string; chat?: string | ((messages: any[]) => string); promptMap?: Record<string, string> }): void;
 }

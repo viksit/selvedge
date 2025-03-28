@@ -12,7 +12,7 @@ export interface MockConfig extends ApiClientConfig {
     /** Default response for completions */
     completion?: string;
     /** Default response for chat */
-    chat?: string;
+    chat?: string | ((messages: any[]) => string);
     /** Response map for specific prompts */
     promptMap?: Record<string, string>;
   };
@@ -54,7 +54,11 @@ export class MockModelAdapter implements ModelAdapter {
    * 
    * @param responses - Object containing completion and chat responses
    */
-  public setResponses(responses: { completion?: string; chat?: string; promptMap?: Record<string, string> }): void {
+  public setResponses(responses: { 
+    completion?: string; 
+    chat?: string | ((messages: any[]) => string); 
+    promptMap?: Record<string, string> 
+  }): void {
     this.config.responses = this.config.responses || {};
     if (responses.completion) {
       this.config.responses.completion = responses.completion;
@@ -104,47 +108,45 @@ export class MockModelAdapter implements ModelAdapter {
   }
   
   /**
-   * Generate chat completions using mock provider
+   * Send a chat request to mock provider
    * 
-   * @param messages - Array of message objects (role and content)
+   * @param messages - Array of chat messages
    * @param options - Additional options for the request
-   * @returns The chat completion response
+   * @returns The chat response
    */
   async chat(messages: any[], options: Record<string, any> = {}): Promise<string> {
     await this.delay();
     
     // Simulate failures for testing error handling
     if (this.config.shouldFail) {
-      throw new Error('Mock chat completion failed (intentional test error)');
+      throw new Error('Mock chat failed (intentional test error)');
     }
     
     // Respect max_tokens if specified in options
     let maxLength = options.maxTokens || 1000;
     
-    // Get the last user message to use as a key for prompt map lookups
-    const lastUserMessage = [...messages].reverse().find(m => m.role === 'user')?.content;
-    
-    // Check if we have a specific response for this message
-    if (lastUserMessage && this.config.responses?.promptMap?.[lastUserMessage]) {
-      const response = this.config.responses.promptMap[lastUserMessage];
-      return response.substring(0, maxLength);
-    }
-    
-    // Build a response acknowledging the conversation context
-    let contextAwareness = '';
-    if (options.system) {
-      contextAwareness = `[System: ${options.system.substring(0, 20)}...] `;
+    // If the chat response is a function, call it with the messages
+    if (typeof this.config.responses?.chat === 'function') {
+      return this.config.responses.chat(messages);
     }
     
     // Return default response or a generated one
     let response = this.config.responses?.chat || 
-      `${contextAwareness}Mock chat response for model ${this.modelDef.model} with ${messages.length} messages`;
+      `Mock chat response for model ${this.modelDef.model}`;
       
+    // Add some context from the last user message if available
+    const lastUserMessage = messages.findLast(m => m.role === 'user');
+    if (lastUserMessage) {
+      const content = typeof lastUserMessage.content === 'string' ? lastUserMessage.content : JSON.stringify(lastUserMessage.content);
+      const preview = content.substring(0, 30) + (content.length > 30 ? '...' : '');
+      response += ` responding to: "${preview}"`;
+    }
+    
     // Adjust response based on temperature if specified
     if (options.temperature && options.temperature > 0.7) {
       response += " [High creativity response]";
     }
-      
+    
     return response.substring(0, maxLength);
   }
 }

@@ -5,6 +5,8 @@ import { ModelRegistry } from './models';
 import { ModelProvider, SelvedgeInstance, ModelDefinition } from './types';
 import { createTemplate } from './prompts/template';
 import { PromptTemplate } from './prompts/types';
+import { createProgram } from './programs/program';
+import { ProgramBuilder } from './programs/types';
 
 /**
  * The main Selvedge instance that provides access to all library functionality
@@ -90,19 +92,24 @@ export const selvedge: SelvedgeInstance = {
    * @param strings - Template string parts
    * @param values - Values for template substitution
    * @returns A program builder object
+   * 
+   * @example
+   * ```typescript
+   * const generateFunction = selvedge.program`
+   *   Generate a JavaScript function that ${task => task}
+   * `.withExamples([
+   *   {
+   *     input: { task: "sorts an array of numbers" },
+   *     output: "function sortNumbers(arr) {\n  return [...arr].sort((a, b) => a - b);\n}"
+   *   }
+   * ]).using("smart");
+   * 
+   * // Later, generate code
+   * const code = await generateFunction.generate({ task: "reverses a string" });
+   * ```
    */
-  program(strings: TemplateStringsArray, ...values: any[]): any {
-    // This is a temporary placeholder implementation for Phase 1
-    // Will be properly implemented in Phase 3
-    const templateText = strings.reduce((result, str, i) => {
-      return result + str + (values[i] || '');
-    }, '');
-    
-    return {
-      examples: () => ({ using: () => ({ persist: () => ({
-        _template: templateText // Store but don't use yet
-      }) }) })
-    };
+  program<T = string>(strings: TemplateStringsArray, ...values: any[]): ProgramBuilder<T> {
+    return createProgram<T>(strings, values);
   },
 
   /**
