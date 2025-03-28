@@ -57,7 +57,7 @@ export interface SelvedgeInstance {
   /**
    * Create a prompt template
    */
-  prompt(strings: TemplateStringsArray, ...values: any[]): any;
+  prompt<T = any>(strings: TemplateStringsArray, ...values: any[]): import('./prompts/types').PromptTemplate<T>;
 }
 
 /**

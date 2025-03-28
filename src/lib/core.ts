@@ -4,6 +4,7 @@
 import { ModelRegistry } from './models';
 import { ModelProvider, SelvedgeInstance, ModelDefinition } from './types';
 import { createTemplate } from './prompts/template';
+import { PromptTemplate } from './prompts/types';
 
 /**
  * The main Selvedge instance that provides access to all library functionality
@@ -123,8 +124,8 @@ export const selvedge: SelvedgeInstance = {
    * console.log(result.score); // 0.9
    * ```
    */
-  prompt(strings: TemplateStringsArray, ...values: any[]): any {
-    return createTemplate(strings, values);
+  prompt<T = any>(strings: TemplateStringsArray, ...values: any[]): PromptTemplate<T> {
+    return createTemplate<T>(strings, values);
   }
 };
 
