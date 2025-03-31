@@ -28,7 +28,7 @@ describe('Mock Adapter', () => {
       expect(adapter).toBeDefined();
       
       // Test basic completion
-      const result = await adapter.complete('Hello, world!');
+      const result = await adapter!.complete('Hello, world!');
       expect(result).toContain('Hello, world');
     }
   });
@@ -41,7 +41,7 @@ describe('Mock Adapter', () => {
       const adapter = ModelRegistry.getAdapter(model);
       
       // Test with max tokens limit
-      const result = await adapter.complete('This is a long prompt that should be truncated', {
+      const result = await adapter!.complete('This is a long prompt that should be truncated', {
         maxTokens: 10
       });
       
@@ -63,9 +63,9 @@ describe('Mock Adapter', () => {
         { role: 'user', content: 'Hello!' }
       ];
       
-      const result = await adapter.chat(messages);
+      const result = await adapter!.chat(messages);
       expect(result).toContain('Mock chat response');
-      expect(result).toContain('2 messages');
+      expect(result).toContain('responding to: "Hello!"');
     }
   });
   
@@ -94,7 +94,7 @@ describe('Mock Adapter', () => {
       const adapter = ModelRegistry.getAdapter(model);
       
       // Test with the specific question that has a preset answer
-      const result = await adapter.complete('specific question');
+      const result = await adapter!.complete('specific question');
       expect(result).toBe('specific answer');
     }
   });
@@ -120,7 +120,7 @@ describe('Mock Adapter', () => {
       const adapter = ModelRegistry.getAdapter(model);
       
       // Test that it throws the expected error
-      await expect(adapter.complete('test')).rejects.toThrow('Mock completion failed');
+      await expect(adapter!.complete('test')).rejects.toThrow('Mock completion failed');
     }
   });
 });

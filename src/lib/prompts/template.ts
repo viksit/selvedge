@@ -247,16 +247,13 @@ export function createTemplate<T = any>(
       // Create a new template with the desired return type
       return createTemplateFromBase<R>(this, {
         formatResponse: function(response: string): R {
-          try {
-            // Try to parse as JSON if the response looks like JSON
-            if (response.trim().startsWith('{') || response.trim().startsWith('[')) {
-              return JSON.parse(response);
-            }
-          } catch (e) {
-            console.error('Error parsing JSON response:', e);
-            // If parsing fails, just return the raw string
+          // First try to extract JSON from the response
+          const extractedJson = extractJsonFromString(response);
+          if (extractedJson) {
+            return extractedJson as unknown as R;
           }
           
+          // If no JSON could be extracted, return the raw response
           return response as unknown as R;
         }
       });
@@ -321,4 +318,83 @@ export function createTemplate<T = any>(
   };
   
   return template;
+}
+
+/**
+ * Attempts to extract valid JSON from a string that might contain other text
+ * 
+ * @param text - The string that might contain JSON
+ * @returns The parsed JSON object if found, otherwise null
+ */
+function extractJsonFromString(text: string): any | null {
+  // Clean the input text
+  const cleanedText = text.trim();
+  
+  // First, try direct parsing if it looks like JSON
+  if ((cleanedText.startsWith('{') && cleanedText.endsWith('}')) || 
+      (cleanedText.startsWith('[') && cleanedText.endsWith(']'))) {
+    try {
+      return JSON.parse(cleanedText);
+    } catch (e) {
+      // Direct parsing failed, continue to more advanced methods
+    }
+  }
+  
+  // Try to find JSON objects using regex
+  try {
+    // Look for objects: {...}
+    const objectMatches = cleanedText.match(/\{(?:[^{}]|(?:\{(?:[^{}]|(?:\{[^{}]*\}))*\}))*\}/g);
+    if (objectMatches && objectMatches.length > 0) {
+      // Try each match, starting with the largest one (most likely to be the complete object)
+      const sortedMatches = objectMatches.sort((a, b) => b.length - a.length);
+      
+      for (const match of sortedMatches) {
+        try {
+          return JSON.parse(match);
+        } catch (e) {
+          // This match failed, try the next one
+          continue;
+        }
+      }
+    }
+    
+    // Look for arrays: [...]
+    const arrayMatches = cleanedText.match(/\[(?:[^\[\]]|(?:\[(?:[^\[\]]|(?:\[[^\[\]]*\]))*\]))*\]/g);
+    if (arrayMatches && arrayMatches.length > 0) {
+      // Try each match, starting with the largest one
+      const sortedMatches = arrayMatches.sort((a, b) => b.length - a.length);
+      
+      for (const match of sortedMatches) {
+        try {
+          return JSON.parse(match);
+        } catch (e) {
+          // This match failed, try the next one
+          continue;
+        }
+      }
+    }
+  } catch (e) {
+    console.error('Error while trying to extract JSON with regex:', e);
+  }
+  
+  // If we're dealing with markdown code blocks, try to extract JSON from them
+  try {
+    const codeBlockRegex = /```(?:json)?\s*([\s\S]*?)```/g;
+    const codeBlocks = [...cleanedText.matchAll(codeBlockRegex)];
+    
+    for (const block of codeBlocks) {
+      const codeContent = block[1].trim();
+      try {
+        return JSON.parse(codeContent);
+      } catch (e) {
+        // This code block didn't contain valid JSON, try the next one
+        continue;
+      }
+    }
+  } catch (e) {
+    console.error('Error while trying to extract JSON from code blocks:', e);
+  }
+  
+  // No valid JSON found
+  return null;
 }
