@@ -109,6 +109,13 @@ export interface PromptTemplate<T = any> {
   
   /** Specify the model to use for this prompt */
   using: (model: string | import('../types').ModelDefinition) => PromptTemplate<T>;
+  
+  /** 
+   * Save this prompt template with versioning
+   * @param name Name to save the prompt under
+   * @returns The prompt template for chaining
+   */
+  save: (name: string) => Promise<PromptTemplate<T>>;
 }
 
 /**

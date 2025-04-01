@@ -4,6 +4,7 @@
 import { PromptVariables, PromptVariable, PromptSegment, PromptTemplate, PromptExecutionOptions } from './types';
 import { ModelRegistry } from '../models';
 import { ModelDefinition, ModelProvider } from '../types';
+import { store } from '../storage';
 
 /**
  * Default variable renderer
@@ -314,6 +315,20 @@ export function createTemplate<T = any>(
           return self.execute<R>(variables, newOptions);
         }
       });
+    },
+    
+    async save(name: string): Promise<PromptTemplate<T>> {
+      // Prepare data for storage
+      const data = {
+        segments: this.segments,
+        variables: this.variables
+      };
+      
+      // Save to storage
+      await store.save('prompt', name, data);
+      
+      // Return this for chaining
+      return this;
     }
   };
   

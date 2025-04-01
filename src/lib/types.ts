@@ -58,6 +58,48 @@ export interface SelvedgeInstance {
    * Create a prompt template
    */
   prompt<T = any>(strings: TemplateStringsArray, ...values: any[]): import('./prompts/types').PromptTemplate<T>;
+  
+  /**
+   * Load a saved program by name
+   * @param name Name of the program to load
+   * @param version Optional specific version to load (defaults to latest)
+   * @returns A program builder with the loaded program
+   */
+  loadProgram<T = string>(name: string, version?: string): Promise<import('./programs/types').ProgramBuilder<T>>;
+  
+  /**
+   * List all saved programs
+   * @returns Array of program names
+   */
+  listPrograms(): Promise<string[]>;
+  
+  /**
+   * List all versions of a saved program
+   * @param name Name of the program
+   * @returns Array of version IDs
+   */
+  listProgramVersions(name: string): Promise<string[]>;
+  
+  /**
+   * Load a saved prompt by name
+   * @param name Name of the prompt to load
+   * @param version Optional specific version to load (defaults to latest)
+   * @returns A prompt template with the loaded prompt
+   */
+  loadPrompt<T = any>(name: string, version?: string): Promise<import('./prompts/types').PromptTemplate<T>>;
+  
+  /**
+   * List all saved prompts
+   * @returns Array of prompt names
+   */
+  listPrompts(): Promise<string[]>;
+  
+  /**
+   * List all versions of a saved prompt
+   * @param name Name of the prompt
+   * @returns Array of version IDs
+   */
+  listPromptVersions(name: string): Promise<string[]>;
 }
 
 /**

@@ -7,6 +7,7 @@ import { createTemplate } from './prompts/template';
 import { PromptTemplate } from './prompts/types';
 import { createProgram } from './programs/program';
 import { ProgramBuilder } from './programs/types';
+import { store } from './storage';
 
 /**
  * The main Selvedge instance that provides access to all library functionality
@@ -133,6 +134,149 @@ export const selvedge: SelvedgeInstance = {
    */
   prompt<T = any>(strings: TemplateStringsArray, ...values: any[]): PromptTemplate<T> {
     return createTemplate<T>(strings, values);
+  },
+  
+  /**
+   * Load a saved program by name
+   * 
+   * @param name - Name of the program to load
+   * @param version - Optional specific version to load (defaults to latest)
+   * @returns A program builder with the loaded program
+   * 
+   * @example
+   * ```typescript
+   * // Load the latest version of a saved program
+   * const myProgram = await selvedge.loadProgram("my-code-generator");
+   * 
+   * // Use the loaded program
+   * const result = await myProgram.generate({ task: "reverse a string" });
+   * ```
+   */
+  async loadProgram<T = string>(name: string, version?: string): Promise<ProgramBuilder<T>> {
+    // Load the program data from storage
+    const data = await store.load('program', name, version);
+    
+    // Create a base program builder with an empty template
+    // Use a minimal template string to initialize the program builder
+    const emptyTemplate = [''] as unknown as TemplateStringsArray;
+    const builder = createProgram<T>(emptyTemplate, []);
+    
+    // Reconstruct the program builder with the loaded data
+    if (data && data.template) {
+      // Replace the template properties
+      builder.template.segments = data.template.segments;
+      builder.template.variables = data.template.variables;
+      
+      // Set examples and model
+      if (data.examples) {
+        builder.exampleList = data.examples;
+      }
+      
+      if (data.model) {
+        builder.modelDef = data.model;
+      }
+    }
+    
+    return builder;
+  },
+  
+  /**
+   * List all saved programs
+   * 
+   * @returns Array of program names
+   * 
+   * @example
+   * ```typescript
+   * const programs = await selvedge.listPrograms();
+   * console.log("Available programs:", programs);
+   * ```
+   */
+  async listPrograms(): Promise<string[]> {
+    return store.list('program');
+  },
+  
+  /**
+   * List all versions of a saved program
+   * 
+   * @param name - Name of the program
+   * @returns Array of version IDs
+   * 
+   * @example
+   * ```typescript
+   * const versions = await selvedge.listProgramVersions("my-code-generator");
+   * console.log("Available versions:", versions);
+   * ```
+   */
+  async listProgramVersions(name: string): Promise<string[]> {
+    return store.listVersions('program', name);
+  },
+  
+  /**
+   * Load a saved prompt by name
+   * 
+   * @param name - Name of the prompt to load
+   * @param version - Optional specific version to load (defaults to latest)
+   * @returns A prompt template with the loaded prompt
+   * 
+   * @example
+   * ```typescript
+   * // Load the latest version of a saved prompt
+   * const myPrompt = await selvedge.loadPrompt("my-sentiment-analyzer");
+   * 
+   * // Use the loaded prompt
+   * const result = await myPrompt.execute({ text: "I love this product!" });
+   * ```
+   */
+  async loadPrompt<T = any>(name: string, version?: string): Promise<PromptTemplate<T>> {
+    // Load the prompt data from storage
+    const data = await store.load('prompt', name, version);
+    
+    // Create a base prompt template with empty segments
+    const emptyTemplate = [''] as unknown as TemplateStringsArray;
+    const template = createTemplate<T>(emptyTemplate, []);
+    
+    // Reconstruct the prompt template with the loaded data
+    if (data && data.segments) {
+      // Replace the template properties
+      template.segments = data.segments;
+      
+      if (data.variables) {
+        template.variables = data.variables;
+      }
+    }
+    
+    return template;
+  },
+  
+  /**
+   * List all saved prompts
+   * 
+   * @returns Array of prompt names
+   * 
+   * @example
+   * ```typescript
+   * const prompts = await selvedge.listPrompts();
+   * console.log("Available prompts:", prompts);
+   * ```
+   */
+  async listPrompts(): Promise<string[]> {
+    return store.list('prompt');
+  },
+  
+  /**
+   * List all versions of a saved prompt
+   * 
+   * @param name - Name of the prompt
+   * @returns Array of version IDs
+   * 
+   * @example
+   * ```typescript
+   * const versions = await selvedge.listPromptVersions("my-sentiment-analyzer");
+   * console.log("Available versions:", versions);
+   * ```
+   */
+  async listPromptVersions(name: string): Promise<string[]> {
+    return store.listVersions('prompt', name);
   }
 };
 

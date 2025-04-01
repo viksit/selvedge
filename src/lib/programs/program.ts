@@ -7,6 +7,7 @@ import { ModelRegistry } from '../models';
 import { ModelDefinition, ModelProvider } from '../types';
 import * as ts from 'typescript';
 import * as vm from 'vm';
+import { store } from '../storage';
 
 /**
  * Compiles and evaluates TypeScript code, preserving type information
@@ -264,6 +265,24 @@ export function createProgram<T = string>(
       // For demonstration purposes, we'll attach the ID to the builder
       const newBuilder = { ...this, id };
       return newBuilder;
+    },
+    
+    async save(name: string): Promise<ProgramBuilder<T>> {
+      // Prepare data for storage
+      const data = {
+        template: {
+          segments: this.template.segments,
+          variables: this.template.variables
+        },
+        examples: this.exampleList,
+        model: this.modelDef
+      };
+      
+      // Save to storage
+      await store.save('program', name, data);
+      
+      // Return this for chaining
+      return this;
     }
   };
 

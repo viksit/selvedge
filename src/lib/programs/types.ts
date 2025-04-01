@@ -80,6 +80,13 @@ export interface ProgramBuilder<T = string> {
   /** Specify the return type of the program */
   returns<R>(): ProgramBuilder<R>;
 
-  /** Save this program for later use */
+  /** Save this program for later use (legacy method) */
   persist(id: string): ProgramBuilder<T>;
+  
+  /** 
+   * Save this program with versioning
+   * @param name Name to save the program under
+   * @returns The program builder for chaining
+   */
+  save(name: string): Promise<ProgramBuilder<T>>;
 }
