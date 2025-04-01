@@ -24,6 +24,14 @@ export class Store {
   }
   
   /**
+   * Get the base path for storage
+   * @returns The base directory path
+   */
+  getBasePath(): string {
+    return this.baseDir;
+  }
+  
+  /**
    * Generate a unique ID with timestamp for versioning
    * @returns A unique version ID
    */
@@ -106,12 +114,18 @@ export class Store {
   }
   
   /**
-   * Load the latest version of an item
+   * Load the latest version of an item, or a specific version if provided
    * @param type Type of item ('prompt' or 'program')
    * @param name Name of the item
+   * @param version Optional version ID to load
    * @returns The loaded item data
    */
-  async load(type: 'prompt' | 'program', name: string): Promise<any> {
+  async load(type: 'prompt' | 'program', name: string, version?: string): Promise<any> {
+    // If version is provided, load that specific version
+    if (version) {
+      return this.loadVersion(type, name, version);
+    }
+    
     const itemDir = path.join(this.baseDir, type + 's', name);
     
     try {

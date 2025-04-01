@@ -28,7 +28,7 @@ async function runTests() {
   console.log('Setting up test environment...');
   
   // Save original store
-  originalStore = store.baseDir;
+  originalStore = store.getBasePath();
   
   // Create test directory
   await fs.mkdir(testDir, { recursive: true });

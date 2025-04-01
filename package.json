@@ -9,23 +9,29 @@
   "files": [
     "dist"
   ],
+  "bin": {
+    "selvedge": "dist/cli/index.js"
+  },
   "scripts": {
-    "build": "bun run build:clean && bun run build:js && bun run build:types",
+    "build": "bun run build:clean && bun run build:js && bun run build:types && bun run build:cli",
     "build:clean": "rm -rf dist",
     "build:js": "bun build ./src/index.ts --outdir ./dist --target node --minify",
     "build:types": "tsc --emitDeclarationOnly --outDir dist",
+    "build:cli": "bun build ./src/cli/index.ts --outdir ./dist/cli --target node",
     "test": "bun test",
     "prepublishOnly": "bun run build"
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "@types/commander": "^2.12.5",
     "@types/node": "^22.13.16",
     "typescript": "^5.0.0"
   },
   "dependencies": {
     "openai": "^4.28.0",
     "@anthropic-ai/sdk": "^0.16.0",
-    "zod": "^3.22.4"
+    "zod": "^3.22.4",
+    "commander": "^11.1.0"
   },
   "peerDependencies": {
     "typescript": "^5.0.0"

@@ -10,3 +10,7 @@ export * from './lib/prompts';
 
 // Re-export model-related types
 export { ModelRegistry } from './lib/models';
+
+// Export storage and manager
+export { store } from './lib/storage';
+export { manager, SelvedgeManager } from './lib/manager';
