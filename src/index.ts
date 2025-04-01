@@ -12,5 +12,16 @@ export * from './lib/prompts';
 export { ModelRegistry } from './lib/models';
 
 // Export storage and manager
-export { store } from './lib/storage';
-export { manager, SelvedgeManager } from './lib/manager';
+export { Store, store } from './lib/storage';
+export { SelvedgeManager, manager } from './lib/manager';
+
+// Export flow system
+export { 
+  flow, 
+  flowWithContext, 
+  validate, 
+  filter, 
+  parallel, 
+  transform, 
+  loadFlow 
+} from './lib/flow';

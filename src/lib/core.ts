@@ -35,17 +35,30 @@ export const selvedge: SelvedgeInstance = {
    * Create an OpenAI model definition
    * 
    * @param model - The OpenAI model name
+   * @param config - Optional configuration (API key will be loaded from OPENAI_API_KEY env var if not provided)
    * @returns A model definition object
    * 
    * @example
    * ```typescript
+   * // Uses API key from .env file automatically
    * const gpt4 = selvedge.openai("gpt-4");
+   * 
+   * // Or with explicit configuration
+   * const gpt4 = selvedge.openai("gpt-4", { 
+   *   apiKey: "your-api-key",
+   *   organization: "your-org-id"
+   * });
    * ```
    */
-  openai(model: string): ModelDefinition {
+  openai(model: string, config: Record<string, any> = {}): ModelDefinition {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!config.apiKey && apiKey) {
+      config.apiKey = apiKey;
+    }
     return {
       provider: ModelProvider.OPENAI,
       model,
+      config
     };
   },
 
@@ -53,17 +66,29 @@ export const selvedge: SelvedgeInstance = {
    * Create an Anthropic model definition
    * 
    * @param model - The Anthropic model name
+   * @param config - Optional configuration (API key will be loaded from ANTHROPIC_API_KEY env var if not provided)
    * @returns A model definition object
    * 
    * @example
    * ```typescript
+   * // Uses API key from .env file automatically
    * const claude = selvedge.anthropic("claude-3-opus");
+   * 
+   * // Or with explicit configuration
+   * const claude = selvedge.anthropic("claude-3-opus", { 
+   *   apiKey: "your-api-key" 
+   * });
    * ```
    */
-  anthropic(model: string): ModelDefinition {
+  anthropic(model: string, config: Record<string, any> = {}): ModelDefinition {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!config.apiKey && apiKey) {
+      config.apiKey = apiKey;
+    }
     return {
       provider: ModelProvider.ANTHROPIC,
       model,
+      config
     };
   },
   
