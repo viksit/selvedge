@@ -180,8 +180,18 @@ export function validate<T>(validator: (input: T) => T | Promise<T>): FlowStep<T
     return await validator(input);
   };
   
-  step.type = FlowStepTypes.VALIDATE;
-  step.name = 'validate';
+  // Use Object.defineProperty to set readonly properties
+  Object.defineProperty(step, 'type', {
+    value: FlowStepTypes.VALIDATE,
+    writable: false,
+    enumerable: true
+  });
+  
+  Object.defineProperty(step, 'name', {
+    value: 'validate',
+    writable: false,
+    enumerable: true
+  });
   
   return step;
 }
@@ -199,8 +209,18 @@ export function filter<T>(predicate: (input: T) => boolean | Promise<boolean>): 
     return input;
   };
   
-  step.type = FlowStepTypes.FILTER;
-  step.name = 'filter';
+  // Use Object.defineProperty to set readonly properties
+  Object.defineProperty(step, 'type', {
+    value: FlowStepTypes.FILTER,
+    writable: false,
+    enumerable: true
+  });
+  
+  Object.defineProperty(step, 'name', {
+    value: 'filter',
+    writable: false,
+    enumerable: true
+  });
   
   return step;
 }
@@ -223,8 +243,18 @@ export function parallel<TInput, TOutput extends Record<string, any>>(
     return results as TOutput;
   };
   
-  step.type = FlowStepTypes.PARALLEL;
-  step.name = 'parallel';
+  // Use Object.defineProperty to set readonly properties
+  Object.defineProperty(step, 'type', {
+    value: FlowStepTypes.PARALLEL,
+    writable: false,
+    enumerable: true
+  });
+  
+  Object.defineProperty(step, 'name', {
+    value: 'parallel',
+    writable: false,
+    enumerable: true
+  });
   
   return step;
 }
@@ -241,8 +271,18 @@ export function transform<TInput, TOutput>(
     return await transformer(input);
   };
   
-  step.type = FlowStepTypes.TRANSFORM;
-  step.name = 'transform';
+  // Use Object.defineProperty to set readonly properties
+  Object.defineProperty(step, 'type', {
+    value: FlowStepTypes.TRANSFORM,
+    writable: false,
+    enumerable: true
+  });
+  
+  Object.defineProperty(step, 'name', {
+    value: 'transform',
+    writable: false,
+    enumerable: true
+  });
   
   return step;
 }

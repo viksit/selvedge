@@ -260,12 +260,15 @@ export class Store {
    * Delete an item and all its versions
    * @param type Type of item ('prompt' or 'program')
    * @param name Name of the item
-   * @returns True if deleted successfully
+   * @returns True if deleted successfully, false if item doesn't exist
    */
   async delete(type: 'prompt' | 'program', name: string): Promise<boolean> {
     const itemDir = path.join(this.baseDir, type + 's', name);
     
     try {
+      // Check if directory exists first
+      await fsPromises.access(itemDir);
+      
       // Recursively delete the directory
       await fsPromises.rm(itemDir, { recursive: true, force: true });
       return true;

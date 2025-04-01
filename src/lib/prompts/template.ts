@@ -247,7 +247,7 @@ export function createTemplate<T = any>(
     returns<R>(): PromptTemplate<R> {
       // Create a new template with the desired return type
       return createTemplateFromBase<R>(this, {
-        formatResponse: function(response: string): R {
+        formatResponse: (response: string): R => {
           // First try to extract JSON from the response
           const extractedJson = extractJsonFromString(response);
           if (extractedJson) {
@@ -256,6 +256,20 @@ export function createTemplate<T = any>(
           
           // If no JSON could be extracted, return the raw response
           return response as unknown as R;
+        },
+        // Preserve the save method
+        save: async (name: string): Promise<PromptTemplate<R>> => {
+          // Prepare data for storage
+          const data = {
+            segments: this.segments,
+            variables: this.variables
+          };
+          
+          // Save to storage
+          await store.save('prompt', name, data);
+          
+          // Return this for chaining
+          return this as unknown as PromptTemplate<R>;
         }
       });
     },
