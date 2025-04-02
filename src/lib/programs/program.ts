@@ -76,14 +76,27 @@ function evaluateTypeScript(code: string, functionName: string): any {
 }
 
 /**
- * Creates a proxy for a generated function that allows direct calls
- * @param code The generated TypeScript code
+ * Create a proxy for a generated function that allows direct calls
+ * 
+ * @param code - The generated function code
  * @returns A proxy object that can be called directly or accessed by function name
  */
 function createFunctionProxy(code: string): any {
-  // Extract function name using regex
-  const match = code.match(/function\s+([a-zA-Z0-9_]+)/);
+  // Extract function name using regex - try different patterns
+  let match = code.match(/function\s+([a-zA-Z0-9_]+)/);
+  
+  // If no match, try arrow function pattern
   if (!match) {
+    match = code.match(/const\s+([a-zA-Z0-9_]+)\s*=/);
+  }
+  
+  // If still no match, try class pattern
+  if (!match) {
+    match = code.match(/class\s+([a-zA-Z0-9_]+)/);
+  }
+  
+  if (!match) {
+    console.error("Generated code:", code);
     throw new Error("No function found in generated code");
   }
 
@@ -100,36 +113,12 @@ function createFunctionProxy(code: string): any {
       // If the result is an object, clean it up by removing Object prototype methods
       if (result && typeof result === 'object' && !Array.isArray(result)) {
         return Object.fromEntries(
-          Object.entries(result).filter(([_, value]) => 
-            // Keep only properties that aren't functions from Object.prototype
-            typeof value !== 'function' || !Object.prototype.hasOwnProperty(value.name)
-          )
+          Object.entries(result).filter(([key]) => !Object.prototype.hasOwnProperty(key))
         );
       }
       
       return result;
     },
-    get: (target, prop) => {
-      if (typeof target[prop] === 'function' && prop !== functionName) {
-        // Wrap any function properties to clean up their results too
-        return function(this: any, ...args: any[]) {
-          const result = target[prop].apply(this, args);
-          
-          // If the result is an object, clean it up
-          if (result && typeof result === 'object' && !Array.isArray(result)) {
-            return Object.fromEntries(
-              Object.entries(result).filter(([_, value]) => 
-                typeof value !== 'function' || !Object.prototype.hasOwnProperty(value.name)
-              )
-            );
-          }
-          
-          return result;
-        };
-      }
-      
-      return target[prop];
-    }
   });
 }
 
@@ -156,6 +145,7 @@ export function createProgram<T = string>(
     template,
     exampleList,
     modelDef, // Add modelDef property to the builder object
+    generatedCode: null,
 
     withExamples(newExamples: ProgramExample[]): ProgramBuilder<T> {
       // Create a new builder with the updated examples
@@ -196,87 +186,87 @@ export function createProgram<T = string>(
       return newBuilder;
     },
 
-    async generate(variables: ProgramVariables, options: ProgramExecutionOptions = {}): Promise<T> {
-      // Combine the template, examples, and variables to create a prompt for code generation
-      let prompt = '';
-
-      // Add system instruction
-      prompt += 'You are an expert programmer. Generate code based on the following instructions and examples.\n\n';
-
-      // Add examples if available
-      if (this.exampleList.length > 0) {
-        prompt += 'EXAMPLES:\n\n';
-
-        for (const example of this.exampleList) {
-          prompt += 'Input:\n';
-          prompt += JSON.stringify(example.input, null, 2) + '\n\n';
-          prompt += 'Output:\n';
-          prompt += example.output + '\n\n';
-
-          if (example.explanation && options.includeExplanations) {
-            prompt += 'Explanation:\n';
-            prompt += example.explanation + '\n\n';
-          }
-
-          prompt += '---\n\n';
-        }
-      }
-
-      // Add the main instruction from the template
-      prompt += 'INSTRUCTION:\n';
-      prompt += template.render(variables) + '\n\n';
-
-      // Add the input variables
-      prompt += 'INPUT:\n';
-      prompt += JSON.stringify(variables, null, 2) + '\n\n';
-
-      // Add the output instruction
-      prompt += 'OUTPUT (code only, no explanations unless requested):\n';
-
-      // Determine which model to use
-      const modelToUse = options.model ?
-        (typeof options.model === 'string' ? ModelRegistry.getModel(options.model) : options.model) :
-        this.modelDef;
-
+    async generate(variables: ProgramVariables = {}, options: ProgramExecutionOptions = {}): Promise<T> {
+      // Get the model to use
+      const modelToUse = options.model 
+        ? (typeof options.model === 'string' ? ModelRegistry.getModel(options.model) : options.model)
+        : this.modelDef;
+      
       if (!modelToUse) {
         throw new Error('No model specified for code generation');
       }
-
+      
       // Get the adapter for this model
       const adapter = ModelRegistry.getAdapter(modelToUse);
-
       if (!adapter) {
         throw new Error(`No adapter found for model: ${modelToUse.provider}:${modelToUse.model}`);
       }
-
-      // Execute the prompt
-      let response: string;
-
-      // For most models, we'll use the chat interface
-      const messages = [
-        { role: 'system', content: 'You are an expert programmer. Generate code based on the instructions and examples provided.' },
-        { role: 'user', content: prompt }
-      ];
-
-      // Set execution options
+      
+      // If we have cached code and aren't forcing regeneration, use it
+      if (this.generatedCode && !options.forceRegenerate) {
+        return this.generatedCode as unknown as T;
+      }
+      
+      // Prepare the execution options
       const execOptions = {
-        temperature: options.temperature ?? 0.2, // Lower temperature for code generation
+        temperature: options.temperature || 0.2,
         maxTokens: options.maxTokens,
         ...options
       };
-
-      response = await adapter.chat(messages, execOptions);
+      
+      // Prepare the messages for the chat
+      let messages = [
+        {
+          role: 'system',
+          content: 'You are a code generation assistant. Generate code based on the user\'s request.'
+        }
+      ];
+      
+      // Add examples if available
+      if (this.exampleList.length > 0) {
+        for (const example of this.exampleList) {
+          messages.push({
+            role: 'user',
+            content: this.template.render(example.input)
+          });
+          
+          messages.push({
+            role: 'assistant',
+            content: example.output
+          });
+        }
+      }
+      
+      // Add the current request
+      messages.push({
+        role: 'user',
+        content: this.template.render(variables)
+      });
+      
+      // Execute the model
+      const response = await adapter.chat(messages, execOptions);
 
       // Process the response to extract just the code
       const codeResponse = extractCodeFromResponse(response);
+      
+      // Cache the generated code
+      this.generatedCode = String(codeResponse);
 
       return codeResponse as unknown as T;
     },
 
     async execute(variables: ProgramVariables = {}, options: ProgramExecutionOptions = {}): Promise<any> {
       try {
-        // Generate the function code
+        // If we already have generated code, use it directly
+        if (this.generatedCode) {
+          return createFunctionProxy(String(this.generatedCode));
+        }
+        
+        // Otherwise, generate the function code
         const code = await this.generate(variables, options);
+        
+        // Store the generated code for future use
+        this.generatedCode = String(code);
         
         // Create and return a proxy for the function
         return createFunctionProxy(String(code));
@@ -306,6 +296,15 @@ export function createProgram<T = string>(
     },
     
     async save(name: string): Promise<ProgramBuilder<T>> {
+      // If we don't have generated code yet, generate it
+      if (!this.generatedCode) {
+        try {
+          await this.generate({});
+        } catch (error) {
+          console.warn(`Could not pre-generate code for program "${name}". Will store template only.`);
+        }
+      }
+      
       // Prepare data for storage
       const data = {
         template: {
@@ -313,7 +312,8 @@ export function createProgram<T = string>(
           variables: this.template.variables
         },
         examples: this.exampleList,
-        model: this.modelDef
+        model: this.modelDef,
+        generatedCode: this.generatedCode
       };
       
       // Save to storage

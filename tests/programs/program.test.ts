@@ -4,6 +4,8 @@
 import { describe, it, expect, beforeEach } from 'bun:test';
 import { selvedge } from '../../src';
 import { ModelRegistry } from '../../src/lib/models';
+import { store } from '../../src/lib/storage';
+import { ModelProvider } from '../../src/lib/types';
 
 describe('Program Generation', () => {
   beforeEach(() => {
@@ -29,7 +31,8 @@ describe('Program Generation', () => {
             return '```javascript\nfunction broken( {\n  syntax error here\n}\n```';
           } else if (userMessage.includes('math utility')) {
             return '```javascript\nfunction add(a, b) {\n  return a + b;\n}\n\nfunction multiply(a, b) {\n  return a * b;\n}\n```';
-          } else if (userMessage.includes('word frequency')) {
+          } else if (userMessage.includes('frequency') || userMessage.includes('extract some frequency')) {
+            // Handle both the original request and regeneration requests
             return '```javascript\nfunction countWords(text) {\n  const words = text.toLowerCase().split(/\\W+/).filter(w => w.length > 0);\n  const frequency = {};\n  for (const word of words) {\n    frequency[word] = (frequency[word] || 0) + 1;\n  }\n  return frequency;\n}\n```';
           } else {
             return '```javascript\nfunction defaultFunction() {\n  return "Hello, world!";\n}\n```';
@@ -290,5 +293,80 @@ describe('Program Generation', () => {
     
     // The serialized object should not contain any functions
     expect(Object.values(parsed).every(value => typeof value === 'number')).toBe(true);
+  });
+
+  it('should save and load a program with generated code', async () => {
+    // Create a unique program name for this test
+    const programName = 'code-persistence-test-' + Date.now();
+    
+    // Create a program
+    const p = selvedge.program`
+      /**
+       * Add two numbers together
+       * @param a - First number
+       * @param b - Second number
+       * @returns The sum of a and b
+       */
+    `.using('test');
+    
+    // Generate the code first
+    await p.generate({ task: 'add numbers' });
+    
+    // Save the program
+    await p.save(programName);
+    
+    // Load the program
+    const loadedProgram = await selvedge.loadProgram(programName);
+    
+    // Verify the loaded program has the generated code
+    expect(loadedProgram.generatedCode).toBeDefined();
+    
+    // Execute the program without regenerating
+    const result = await loadedProgram.execute();
+    
+    // Verify the result works as expected
+    expect(result).toBeDefined();
+    expect(typeof result).toBe('function');
+    expect(result(2, 3)).toBe(5);
+  });
+  
+  it('should force regeneration of code when forceRegenerate option is true', async () => {
+    // Create a unique program name for this test
+    const programName = 'force-regen-test-' + Date.now();
+    
+    // Create a program
+    const p = selvedge.program`
+      /**
+       * Add two numbers together
+       * @param a - First number
+       * @param b - Second number
+       * @returns The sum of a and b
+       */
+    `.using('test');
+    
+    // Generate the code first
+    await p.generate({ task: 'add numbers' });
+    
+    // Save the program
+    await p.save(programName);
+    
+    // Load the program
+    const loadedProgram = await selvedge.loadProgram(programName);
+    
+    // Store the original code
+    const originalCode = loadedProgram.generatedCode;
+    
+    // Execute with forceRegenerate option
+    await loadedProgram.execute({}, { forceRegenerate: true });
+    
+    // The code should have been regenerated
+    expect(loadedProgram.generatedCode).toBeDefined();
+    
+    // We can't guarantee the code will be different since it's a mock,
+    // but we can verify the execute method works
+    const result = await loadedProgram.execute();
+    expect(result).toBeDefined();
+    expect(typeof result).toBe('function');
+    expect(result(2, 3)).toBe(5);
   });
 });

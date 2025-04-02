@@ -59,6 +59,9 @@ export interface ProgramBuilder<T = string> {
   /** The model definition to use for generation */
   modelDef: ModelDefinition;
 
+  /** Cached generated code */
+  generatedCode: string | null;
+
   /** Add examples to the program builder */
   withExamples(examples: ProgramExample[]): ProgramBuilder<T>;
 

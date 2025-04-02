@@ -253,6 +253,11 @@ export const selvedge: SelvedgeInstance = {
       if (data.model) {
         builder.modelDef = data.model;
       }
+      
+      // Set the generated code if available
+      if (data.generatedCode) {
+        builder.generatedCode = data.generatedCode;
+      }
     }
     
     return builder;
