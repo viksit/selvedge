@@ -286,11 +286,32 @@ export function createProgram<T = string>(
     persist(id: string): ProgramBuilder<T> {
       console.log(`Program "${id}" has been persisted for later use`);
       
-      // Since we can't make this async without breaking the interface,
-      // we'll implement a proper async version as save() and just call it here
-      this.save(id).catch(error => {
-        console.error(`Error persisting program "${id}":`, error);
-      });
+      // Check if a program with this ID already exists
+      store.load('program', id)
+        .then(existingProgram => {
+          if (existingProgram) {
+            console.log(`Program "${id}" already exists, skipping save`);
+            
+            // If the existing program has generated code, load it into this program
+            if (existingProgram.generatedCode) {
+              console.log(`Loading generated code from existing program "${id}"`);
+              this.generatedCode = existingProgram.generatedCode;
+            }
+          } else {
+            // No existing program, save this one
+            console.log(`No existing program "${id}" found, saving current program`);
+            this.save(id);
+          }
+          return this; // Return this for chaining within the promise
+        })
+        .catch(error => {
+          console.error(`Error checking/persisting program "${id}":`, error);
+          // If there was an error checking, try to save anyway
+          this.save(id).catch(saveError => {
+            console.error(`Error saving program "${id}":`, saveError);
+          });
+          return this; // Return this for chaining within the promise
+        });
       
       return this;
     },
