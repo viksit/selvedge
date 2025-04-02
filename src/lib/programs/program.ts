@@ -305,11 +305,20 @@ export function createProgram<T = string>(
           return this; // Return this for chaining within the promise
         })
         .catch(error => {
-          console.error(`Error checking/persisting program "${id}":`, error);
-          // If there was an error checking, try to save anyway
-          this.save(id).catch(saveError => {
-            console.error(`Error saving program "${id}":`, saveError);
-          });
+          // Check if this is a "not found" error, which is expected for new programs
+          if (error.message && error.message.includes('No such file or directory')) {
+            console.log(`No existing program "${id}" found, saving current program`);
+            this.save(id).catch(saveError => {
+              console.error(`Error saving program "${id}":`, saveError);
+            });
+          } else {
+            // Log other unexpected errors
+            console.error(`Error checking/persisting program "${id}":`, error);
+            // If there was an error checking, try to save anyway
+            this.save(id).catch(saveError => {
+              console.error(`Error saving program "${id}":`, saveError);
+            });
+          }
           return this; // Return this for chaining within the promise
         });
 
