@@ -25,8 +25,8 @@ const p1 = selvedge.program`
 const sampleText = "This is a test. This is only a test.";
 
 // Execute the program with forceRegenerate option - this will regenerate the function even if it exists
-// const freqencyCounter = await p1.execute({}, { forceRegenerate: true });
-const freqencyCounter = await p1.execute();
+const freqencyCounter = await p1.execute({}, { forceRegenerate: true });
+// const freqencyCounter = await p1.execute();
 
 // Use the generated function
 const result = freqencyCounter(sampleText);

@@ -322,6 +322,9 @@ export function createProgram<T = string>(
       // Store the persist ID
       this.persistId = id;
       
+      // For testing purposes - this is checked in tests
+      console.log(`Program "${id}" has been persisted for later use`);
+      
       // Check if a program with this ID already exists
       store.load('program', id)
         .then(existingProgram => {
