@@ -44,7 +44,7 @@ describe('Program Generation', () => {
   });
 
   it('should create a program template', () => {
-    const program = selvedge.program`Generate a function that ${task => task}`;
+    const program = selvedge.program`Generate a function that ${(task: string) => task}`;
     expect(program).toBeDefined();
     expect(program.template).toBeDefined();
     expect(program.exampleList).toBeInstanceOf(Array);
@@ -52,7 +52,7 @@ describe('Program Generation', () => {
   });
 
   it('should add examples to a program', () => {
-    const program = selvedge.program`Generate a function that ${task => task}`
+    const program = selvedge.program`Generate a function that ${(task: string) => task}`
       .withExamples([
         {
           input: { task: 'sorts an array' },
@@ -75,7 +75,7 @@ describe('Program Generation', () => {
   });
 
   it('should generate code using the mock adapter', async () => {
-    const program = selvedge.program`Generate a function that ${task => task}`
+    const program = selvedge.program`Generate a function that ${(task: string) => task}`
       .using('test');
 
     const code = await program.generate({ task: 'sort array of numbers' });
@@ -84,7 +84,7 @@ describe('Program Generation', () => {
   });
 
   it('should extract code from a response with markdown', async () => {
-    const program = selvedge.program`Generate a function that ${task => task}`
+    const program = selvedge.program`Generate a function that ${(task: string) => task}`
       .using('test');
 
     const code = await program.generate({ task: 'capitalizes a string' });
@@ -98,7 +98,7 @@ describe('Program Generation', () => {
       name: string;
     }
 
-    const program = selvedge.program`Generate a function that ${task => task}`
+    const program = selvedge.program`Generate a function that ${(task: string) => task}`
       .returns<FunctionResult>();
 
     // This is just a type check, no runtime assertion needed
@@ -107,7 +107,7 @@ describe('Program Generation', () => {
 
   // New tests for execute functionality
   it('should execute generated code and return a function proxy', async () => {
-    const program = selvedge.program`Generate a function that ${task => task}`
+    const program = selvedge.program`Generate a function that ${(task: string) => task}`
       .using('test');
 
     const result = await program.build({ task: 'add numbers' });
@@ -120,7 +120,7 @@ describe('Program Generation', () => {
   });
 
   it('should access the first function when multiple functions are generated', async () => {
-    const program = selvedge.program`Generate ${task => task}`
+    const program = selvedge.program`Generate ${(task: string) => task}`
       .using('test');
 
     const result = await program.build({ task: 'math utility functions' });
@@ -142,7 +142,7 @@ describe('Program Generation', () => {
     const programName = 'persist-test-program-' + Date.now();
 
     // Create and persist the program
-    const program = selvedge.program`Generate a function that ${task => task}`
+    const program = selvedge.program`Generate a function that ${(task: string) => task}`
       .using('test')
       .persist(programName);
 
@@ -182,7 +182,7 @@ describe('Program Generation', () => {
     const programName = 'save-test-program-' + Date.now();
 
     // Create and save the program
-    const program = selvedge.program`Generate a function that ${task => task}`
+    const program = selvedge.program`Generate a function that ${(task: string) => task}`
       .using('test');
 
     // Pre-generate the code to ensure it's ready when we save
@@ -210,7 +210,7 @@ describe('Program Generation', () => {
   });
 
   it('should handle errors during code generation', async () => {
-    const program = selvedge.program`Generate a function that ${task => task}`
+    const program = selvedge.program`Generate a function that ${(task: string) => task}`
       .using('test');
 
     try {
@@ -270,7 +270,7 @@ describe('Program Generation', () => {
   });
 
   it('should return clean objects without Object prototype methods when printed', async () => {
-    const program = selvedge.program`Generate a function that ${task => task}`
+    const program = selvedge.program`Generate a function that ${(task: string) => task}`
       .using('test');
 
     const result = await program.build({ task: 'word frequency counter' });
