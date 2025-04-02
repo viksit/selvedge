@@ -89,8 +89,48 @@ function createFunctionProxy(code: string): any {
 
   const functionName = match[1];
   
-  // Use our TypeScript evaluator
-  return evaluateTypeScript(code, functionName);
+  // Use our TypeScript evaluator to get the base proxy
+  const baseProxy = evaluateTypeScript(code, functionName);
+  
+  // Create an enhanced proxy that cleans up object results
+  return new Proxy(baseProxy, {
+    apply: (target, thisArg, args) => {
+      const result = target.apply(thisArg, args);
+      
+      // If the result is an object, clean it up by removing Object prototype methods
+      if (result && typeof result === 'object' && !Array.isArray(result)) {
+        return Object.fromEntries(
+          Object.entries(result).filter(([_, value]) => 
+            // Keep only properties that aren't functions from Object.prototype
+            typeof value !== 'function' || !Object.prototype.hasOwnProperty(value.name)
+          )
+        );
+      }
+      
+      return result;
+    },
+    get: (target, prop) => {
+      if (typeof target[prop] === 'function' && prop !== functionName) {
+        // Wrap any function properties to clean up their results too
+        return function(this: any, ...args: any[]) {
+          const result = target[prop].apply(this, args);
+          
+          // If the result is an object, clean it up
+          if (result && typeof result === 'object' && !Array.isArray(result)) {
+            return Object.fromEntries(
+              Object.entries(result).filter(([_, value]) => 
+                typeof value !== 'function' || !Object.prototype.hasOwnProperty(value.name)
+              )
+            );
+          }
+          
+          return result;
+        };
+      }
+      
+      return target[prop];
+    }
+  });
 }
 
 /**
@@ -254,17 +294,15 @@ export function createProgram<T = string>(
     },
 
     persist(id: string): ProgramBuilder<T> {
-      // In a real implementation, this would store the program in a persistent store
-      // For now, we'll just log it and return the same builder
       console.log(`Program "${id}" has been persisted for later use`);
-
-      // We could add the program to a registry for later retrieval
-      // This would be similar to how the ModelRegistry works
-      // ProgramRegistry.registerProgram(id, this);
-
-      // For demonstration purposes, we'll attach the ID to the builder
-      const newBuilder = { ...this, id };
-      return newBuilder;
+      
+      // Since we can't make this async without breaking the interface,
+      // we'll implement a proper async version as save() and just call it here
+      this.save(id).catch(error => {
+        console.error(`Error persisting program "${id}":`, error);
+      });
+      
+      return this;
     },
     
     async save(name: string): Promise<ProgramBuilder<T>> {
