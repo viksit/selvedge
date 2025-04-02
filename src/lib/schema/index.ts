@@ -4,8 +4,8 @@
  * This module provides utilities for working with Zod schemas in the Selvedge library.
  */
 import * as z from 'zod';
-import { generateExampleFromSchema, generateJsonExampleFromSchema } from './examples';
-import { inferSchema, inferSchemaFromObject, createSchema } from './inference';
+import { generateExampleFromSchema, generateJsonExampleFromSchema } from '@examples';
+import { inferSchema, inferSchemaFromObject, createSchema } from '@inference';
 
 // Export all the functions
 export {

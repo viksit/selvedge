@@ -2,7 +2,7 @@
  * Tests for the schema utilities
  */
 import * as z from 'zod';
-import { inferSchema, generateJsonExampleFromSchema, validateWithSchema } from '../../src/lib/schema';
+import { inferSchema, generateJsonExampleFromSchema, validateWithSchema } from '@schema/index';
 
 describe('Schema utilities', () => {
   describe('inferSchema', () => {

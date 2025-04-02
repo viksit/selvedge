@@ -15,16 +15,17 @@
   "scripts": {
     "build": "bun run build:clean && bun run build:js && bun run build:types && bun run build:cli",
     "build:clean": "rm -rf dist",
-    "build:js": "bun build ./src/index.ts --outdir ./dist --target node --minify",
+    "build:js": "bun build ./src/index.ts --outdir ./dist --target node --minify --tsconfig-paths",
     "build:types": "tsc --emitDeclarationOnly --outDir dist",
-    "build:cli": "bun build ./src/cli/index.ts --outdir ./dist/cli --target node",
-    "test": "bun test",
+    "build:cli": "bun build ./src/cli/index.ts --outdir ./dist/cli --target node --tsconfig-paths",
+    "test": "bun test --tsconfig-paths",
     "prepublishOnly": "bun run build"
   },
   "devDependencies": {
     "@types/bun": "latest",
     "@types/commander": "^2.12.5",
     "@types/node": "^22.13.16",
+    "tsconfig-paths": "^4.2.0",
     "typescript": "^5.0.0"
   },
   "dependencies": {

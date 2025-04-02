@@ -6,7 +6,7 @@ import { ModelRegistry } from '../models';
 import { ModelDefinition, ModelProvider } from '../types';
 import { store } from '../storage';
 import * as z from 'zod';
-import { inferSchema, generateJsonExampleFromSchema, validateWithSchema } from '../schema';
+import { inferSchema, generateJsonExampleFromSchema, validateWithSchema } from '@schema/index';
 
 /**
  * Default variable renderer
