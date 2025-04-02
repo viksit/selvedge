@@ -3,9 +3,9 @@
  */
 import { describe, it, expect, beforeEach } from 'bun:test';
 import { selvedge } from '../../src';
-import { ModelRegistry } from '../../src/lib/models';
-import { store } from '../../src/lib/storage';
-import { ModelProvider } from '../../src/lib/types';
+import { ModelRegistry } from '@models';
+import { store } from '@storage';
+import { ModelProvider } from '@types';
 
 describe('Program Generation', () => {
   beforeEach(() => {
