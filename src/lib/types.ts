@@ -70,6 +70,13 @@ export interface SelvedgeInstance {
   program<T = string>(strings: TemplateStringsArray, ...values: any[]): import('./programs/types').ProgramBuilder<T>;
   
   /**
+   * Configure debug logging
+   * 
+   * @param config - Debug configuration options (string or object)
+   */
+  debug(config: string | { enabled: boolean, namespaces?: string[] }): void;
+  
+  /**
    * Create a prompt template
    */
   prompt<T = any>(strings: TemplateStringsArray, ...values: any[]): import('./prompts/types').PromptTemplate<T>;

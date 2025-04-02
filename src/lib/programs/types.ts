@@ -62,6 +62,9 @@ export interface ProgramBuilder<T = string> {
   /** Cached generated code */
   generatedCode: string | null;
 
+  /** ID used for persistence, if this program has been persisted */
+  persistId?: string;
+
   /** Add examples to the program builder */
   withExamples(examples: ProgramExample[]): ProgramBuilder<T>;
 

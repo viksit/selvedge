@@ -9,6 +9,7 @@ import { createProgram } from './programs/program';
 import { ProgramBuilder } from './programs/types';
 import { store } from './storage';
 import { flow as createFlow } from './flow';
+import { enableDebug, enableNamespace, parseDebugString } from './utils/debug';
 
 /**
  * The main Selvedge instance that provides access to all library functionality
@@ -360,7 +361,38 @@ export const selvedge: SelvedgeInstance = {
    */
   async listPromptVersions(name: string): Promise<string[]> {
     return store.listVersions('prompt', name);
-  }
+  },
+  
+  /**
+   * Configure debug logging
+   * 
+   * @param config - Debug configuration options
+   * @example
+   * ```typescript
+   * // Enable all debug logs
+   * selvedge.debug('*');
+   * 
+   * // Enable specific namespaces
+   * selvedge.debug('program,persistence');
+   * 
+   * // Enable programmatically
+   * selvedge.debug({ enabled: true, namespaces: ['program'] });
+   * ```
+   */
+  debug(config: string | { enabled: boolean, namespaces?: string[] }): void {
+    if (typeof config === 'string') {
+      // Parse debug string (e.g., 'program,persistence')
+      parseDebugString(config);
+    } else {
+      // Enable/disable debug globally
+      enableDebug(config.enabled);
+      
+      // Enable specific namespaces if provided
+      if (config.namespaces) {
+        config.namespaces.forEach(ns => enableNamespace(ns, true));
+      }
+    }
+  },
 };
 
 /**

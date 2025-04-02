@@ -8,6 +8,7 @@ import { ModelDefinition, ModelProvider } from '../types';
 import * as ts from 'typescript';
 import * as vm from 'vm';
 import { store } from '../storage';
+import { debug } from '../utils/debug';
 
 /**
  * Compiles and evaluates TypeScript code, preserving type information
@@ -50,8 +51,8 @@ function evaluateTypeScript(code: string, functionName: string): any {
   try {
     vm.runInContext(wrappedCode, context);
   } catch (error) {
-    console.error("Error evaluating compiled code:", error);
-    console.error("Compiled code:", result.outputText);
+    debug('typescript', "Error evaluating compiled code:", error);
+    debug('typescript', "Compiled code:", result.outputText);
     throw error;
   }
 
@@ -96,7 +97,7 @@ function createFunctionProxy(code: string): any {
   }
 
   if (!match) {
-    console.error("Generated code:", code);
+    debug('typescript', "Generated code:", code);
     throw new Error("No function found in generated code");
   }
 
@@ -146,6 +147,7 @@ export function createProgram<T = string>(
     exampleList,
     modelDef, // Add modelDef property to the builder object
     generatedCode: null,
+    persistId: undefined,
 
     withExamples(newExamples: ProgramExample[]): ProgramBuilder<T> {
       // Create a new builder with the updated examples
@@ -199,12 +201,19 @@ export function createProgram<T = string>(
       // Get the adapter for this model
       const adapter = ModelRegistry.getAdapter(modelToUse);
       if (!adapter) {
-        throw new Error(`No adapter found for model: ${modelToUse.provider}:${modelToUse.model}`);
+        throw new Error(`No adapter found for model ${modelToUse.provider}/${modelToUse.model}`);
       }
 
       // If we have cached code and aren't forcing regeneration, use it
       if (this.generatedCode && !options.forceRegenerate) {
         return this.generatedCode as unknown as T;
+      }
+
+      // Log if we're forcing regeneration
+      if (options.forceRegenerate) {
+        debug('program', "forceRegenerate option is true - regenerating code even though cached code exists");
+      } else if (!this.generatedCode) {
+        debug('program', "No cached code found in generate() - generating for the first time");
       }
 
       // Prepare the execution options
@@ -218,7 +227,7 @@ export function createProgram<T = string>(
       let messages = [
         {
           role: 'system',
-          content: 'You are a code generation assistant. Generate code based on the user\'s request.'
+          content: 'You are a code generation assistant that produces clean, efficient code. Generate only the requested function without console.log statements, test cases, or usage examples. Focus on writing production-ready code with proper error handling and type safety. Return only the implementation code within a code block.'
         }
       ];
 
@@ -257,23 +266,49 @@ export function createProgram<T = string>(
 
     async execute(variables: ProgramVariables = {}, options: ProgramExecutionOptions = {}): Promise<any> {
       try {
-        // If we already have generated code, use it directly
-        if (this.generatedCode) {
+        // If we have a persist ID but no generated code yet, try to load it first
+        if (this.persistId && !this.generatedCode && !options.forceRegenerate) {
+          try {
+            const existingProgram = await store.load('program', this.persistId);
+            if (existingProgram && existingProgram.generatedCode) {
+              this.generatedCode = existingProgram.generatedCode;
+              debug('persistence', `Loaded existing code from program "${this.persistId}"`);
+            }
+          } catch (error) {
+            // If loading fails, we'll generate new code below
+            debug('persistence', `No existing program "${this.persistId}" found or error loading it`);
+          }
+        }
+
+        // If we already have generated code and aren't forcing regeneration, use it directly
+        if (this.generatedCode && !options.forceRegenerate) {
+          debug('program', "Using existing generated code - no LLM call needed");
           return createFunctionProxy(String(this.generatedCode));
         }
 
-        // Otherwise, generate the function code
-        const code = await this.generate(variables, options);
+        // Log if we're forcing regeneration
+        if (options.forceRegenerate) {
+          debug('program', "forceRegenerate option is true - regenerating code even though cached code exists");
+        } else if (!this.generatedCode) {
+          debug('program', "No cached code found in execute() - generating for the first time");
+        }
 
+        // Generate the code
+        const code = await this.generate(variables, options);
+        
         // Store the generated code for future use
         this.generatedCode = String(code);
-
-        // Create and return a proxy for the function
-        return createFunctionProxy(String(code));
-      } catch (error: unknown) {
-        if (error instanceof Error && error.message.includes('TypeScript compilation errors')) {
-          console.error("TypeScript compilation failed for generated code");
+        
+        // Save the generated code if we have a persist ID
+        if (this.persistId) {
+          this.save(this.persistId).catch(error => {
+            debug('persistence', `Error saving program "${this.persistId}":`, error);
+          });
         }
+
+        return createFunctionProxy(String(code));
+      } catch (error) {
+        debug('program', "Error executing program:", error);
         throw error;
       }
     },
@@ -284,22 +319,23 @@ export function createProgram<T = string>(
     },
 
     persist(id: string): ProgramBuilder<T> {
-      console.log(`Program "${id}" has been persisted for later use`);
-
+      // Store the persist ID
+      this.persistId = id;
+      
       // Check if a program with this ID already exists
       store.load('program', id)
         .then(existingProgram => {
           if (existingProgram) {
-            console.log(`Program "${id}" already exists, skipping save`);
+            debug('persistence', `Program "${id}" already exists, skipping save`);
 
             // If the existing program has generated code, load it into this program
             if (existingProgram.generatedCode) {
-              console.log(`Loading generated code from existing program "${id}"`);
+              debug('persistence', `Loading generated code from existing program "${id}"`);
               this.generatedCode = existingProgram.generatedCode;
             }
           } else {
             // No existing program, save this one
-            console.log(`No existing program "${id}" found, saving current program`);
+            debug('persistence', `No existing program "${id}" found, saving current program`);
             this.save(id);
           }
           return this; // Return this for chaining within the promise
@@ -307,16 +343,16 @@ export function createProgram<T = string>(
         .catch(error => {
           // Check if this is a "not found" error, which is expected for new programs
           if (error.message && error.message.includes('No such file or directory')) {
-            console.log(`No existing program "${id}" found, saving current program`);
+            debug('persistence', `No existing program "${id}" found, saving current program`);
             this.save(id).catch(saveError => {
-              console.error(`Error saving program "${id}":`, saveError);
+              debug('persistence', `Error saving program "${id}":`, saveError);
             });
           } else {
             // Log other unexpected errors
-            console.error(`Error checking/persisting program "${id}":`, error);
+            debug('persistence', `Error checking/persisting program "${id}":`, error);
             // If there was an error checking, try to save anyway
             this.save(id).catch(saveError => {
-              console.error(`Error saving program "${id}":`, saveError);
+              debug('persistence', `Error saving program "${id}":`, saveError);
             });
           }
           return this; // Return this for chaining within the promise
@@ -331,7 +367,7 @@ export function createProgram<T = string>(
         try {
           await this.generate({});
         } catch (error) {
-          console.warn(`Could not pre-generate code for program "${name}". Will store template only.`);
+          debug('program', `Could not pre-generate code for program "${name}". Will store template only.`);
         }
       }
 

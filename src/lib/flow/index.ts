@@ -17,7 +17,7 @@ export function flow<TInput, TOutput>(
   // Create the execution function
   const execute = async (input: TInput): Promise<TOutput> => {
     let current: any = input;
-    
+
     for (const step of steps) {
       try {
         current = await step(current);
@@ -28,23 +28,23 @@ export function flow<TInput, TOutput>(
         throw enhancedError;
       }
     }
-    
+
     return current as TOutput;
   };
-  
+
   // Add metadata
   const metadata: Record<string, any> = {};
-  
+
   // Create the pipeline object
   const pipeline = execute as FlowPipeline<TInput, TOutput>;
-  
+
   // Add the steps
   Object.defineProperty(pipeline, 'steps', {
     value: steps,
     writable: false,
     enumerable: true
   });
-  
+
   // Add the save method
   pipeline.save = async (name: string): Promise<string> => {
     // Serialize the steps (basic implementation)
@@ -56,7 +56,7 @@ export function flow<TInput, TOutput>(
       // This is limited but works for demonstration purposes
       code: step.toString()
     }));
-    
+
     // For now, we'll store flows in the "program" type
     // In a real implementation, we would extend the Store class to support 'flow' type
     return store.save('program', `flow-${name}`, {
@@ -65,23 +65,23 @@ export function flow<TInput, TOutput>(
       _flowData: true // Mark this as flow data for identification
     });
   };
-  
+
   // Add metadata methods
   pipeline.meta = (key: string, value: any): FlowPipeline<TInput, TOutput> => {
     metadata[key] = value;
     return pipeline;
   };
-  
+
   pipeline.describe = (description: string): FlowPipeline<TInput, TOutput> => {
     metadata.description = description;
     return pipeline;
   };
-  
+
   pipeline.tag = (...tags: string[]): FlowPipeline<TInput, TOutput> => {
     metadata.tags = [...(metadata.tags || []), ...tags];
     return pipeline;
   };
-  
+
   return pipeline;
 }
 
@@ -101,9 +101,9 @@ export function flowWithContext<TInput, TOutput>(
       startTime: Date.now(),
       metadata: {}
     };
-    
+
     let current: any = input;
-    
+
     for (const step of steps) {
       try {
         current = await step(current, context);
@@ -114,23 +114,23 @@ export function flowWithContext<TInput, TOutput>(
         throw enhancedError;
       }
     }
-    
+
     return current as TOutput;
   };
-  
+
   // Add metadata
   const metadata: Record<string, any> = {};
-  
+
   // Create the pipeline object
   const pipeline = execute as FlowContextPipeline<TInput, TOutput>;
-  
+
   // Add the steps
   Object.defineProperty(pipeline, 'steps', {
     value: steps,
     writable: false,
     enumerable: true
   });
-  
+
   // Add the save method
   pipeline.save = async (name: string): Promise<string> => {
     // Serialize the steps (basic implementation)
@@ -141,7 +141,7 @@ export function flowWithContext<TInput, TOutput>(
       // For simple functions, we can store the string representation
       code: step.toString()
     }));
-    
+
     // For now, we'll store flows in the "program" type
     return store.save('program', `flow-context-${name}`, {
       steps: serializedSteps,
@@ -150,23 +150,23 @@ export function flowWithContext<TInput, TOutput>(
       _flowData: true // Mark this as flow data for identification
     });
   };
-  
+
   // Add metadata methods
   pipeline.meta = (key: string, value: any): FlowContextPipeline<TInput, TOutput> => {
     metadata[key] = value;
     return pipeline;
   };
-  
+
   pipeline.describe = (description: string): FlowContextPipeline<TInput, TOutput> => {
     metadata.description = description;
     return pipeline;
   };
-  
+
   pipeline.tag = (...tags: string[]): FlowContextPipeline<TInput, TOutput> => {
     metadata.tags = [...(metadata.tags || []), ...tags];
     return pipeline;
   };
-  
+
   return pipeline;
 }
 
@@ -179,20 +179,20 @@ export function validate<T>(validator: (input: T) => T | Promise<T>): FlowStep<T
   const step = async (input: T): Promise<T> => {
     return await validator(input);
   };
-  
+
   // Use Object.defineProperty to set readonly properties
   Object.defineProperty(step, 'type', {
     value: FlowStepTypes.VALIDATE,
     writable: false,
     enumerable: true
   });
-  
+
   Object.defineProperty(step, 'name', {
     value: 'validate',
     writable: false,
     enumerable: true
   });
-  
+
   return step;
 }
 
@@ -208,20 +208,20 @@ export function filter<T>(predicate: (input: T) => boolean | Promise<boolean>): 
     }
     return input;
   };
-  
+
   // Use Object.defineProperty to set readonly properties
   Object.defineProperty(step, 'type', {
     value: FlowStepTypes.FILTER,
     writable: false,
     enumerable: true
   });
-  
+
   Object.defineProperty(step, 'name', {
     value: 'filter',
     writable: false,
     enumerable: true
   });
-  
+
   return step;
 }
 
@@ -238,24 +238,24 @@ export function parallel<TInput, TOutput extends Record<string, any>>(
     const promises = Object.entries(operations).map(async ([key, operation]) => {
       results[key] = await operation(input);
     });
-    
+
     await Promise.all(promises);
     return results as TOutput;
   };
-  
+
   // Use Object.defineProperty to set readonly properties
   Object.defineProperty(step, 'type', {
     value: FlowStepTypes.PARALLEL,
     writable: false,
     enumerable: true
   });
-  
+
   Object.defineProperty(step, 'name', {
     value: 'parallel',
     writable: false,
     enumerable: true
   });
-  
+
   return step;
 }
 
@@ -270,20 +270,20 @@ export function transform<TInput, TOutput>(
   const step = async (input: TInput): Promise<TOutput> => {
     return await transformer(input);
   };
-  
+
   // Use Object.defineProperty to set readonly properties
   Object.defineProperty(step, 'type', {
     value: FlowStepTypes.TRANSFORM,
     writable: false,
     enumerable: true
   });
-  
+
   Object.defineProperty(step, 'name', {
     value: 'transform',
     writable: false,
     enumerable: true
   });
-  
+
   return step;
 }
 
@@ -304,11 +304,11 @@ export async function loadFlow<TInput, TOutput>(
   } catch (error) {
     console.log(`Note: Could not load flow "${name}". Using placeholder implementation.`);
   }
-  
+
   // This is a simplified implementation
   // In a real implementation, we would need to handle different step types
   // and properly reconstruct the functions
-  
+
   // For demonstration purposes, we'll create a simple pass-through flow
   return flow<TInput, TOutput>(
     input => {

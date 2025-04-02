@@ -1,5 +1,8 @@
 import { selvedge } from '../src';
 
+// Enable debug logging for program and persistence namespaces
+selvedge.debug('program,persistence');
+
 // Register models with aliases
 selvedge.models({
   claude: selvedge.anthropic('claude-3-5-haiku-20241022'),
@@ -21,15 +24,16 @@ const p1 = selvedge.program`
 // Sample text to analyze
 const sampleText = "This is a test. This is only a test.";
 
-// Execute the program - this will generate the function if not provided
+// Execute the program with forceRegenerate option - this will regenerate the function even if it exists
+// const freqencyCounter = await p1.execute({}, { forceRegenerate: true });
 const freqencyCounter = await p1.execute();
 
 // Use the generated function
 const result = freqencyCounter(sampleText);
-console.log("Word frequencies:", result);
+console.log("??? Word frequencies:", result);
 
 // load the function from selvedge persistence
 const frequencyCounter2 = await selvedge.loadProgram('word-frequency')
-// console.log("Loaded program:", frequencyCounter2.generatedCode)
+console.log("Loaded program:", frequencyCounter2.generatedCode)
 const lp = await frequencyCounter2.execute()
-console.log(lp(sampleText))
+console.log(">>>>", lp(sampleText))
