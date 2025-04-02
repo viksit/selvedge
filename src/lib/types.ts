@@ -37,17 +37,32 @@ export interface SelvedgeInstance {
   /**
    * Create an OpenAI model definition
    */
-  openai(model: string): ModelDefinition;
+  openai(model: string, config?: Record<string, any>): ModelDefinition;
   
   /**
    * Create an Anthropic model definition
    */
-  anthropic(model: string): ModelDefinition;
+  anthropic(model: string, config?: Record<string, any>): ModelDefinition;
   
   /**
    * Create a mock model definition (for testing)
    */
-  mock(model: string): ModelDefinition;
+  mock(model: string, config?: Record<string, any>): ModelDefinition;
+  
+  /**
+   * List all registered models with their aliases and definitions
+   */
+  listModels(): Array<{ alias: string, definition: ModelDefinition }>;
+  
+  /**
+   * Create a flow pipeline from a series of steps
+   * 
+   * @param steps - Array of steps to include in the pipeline
+   * @returns A flow pipeline that can be executed
+   */
+  flow<TInput = any, TOutput = any>(
+    steps: Array<any>
+  ): import('./flow/types').FlowPipeline<TInput, TOutput>;
   
   /**
    * Create a template for program generation

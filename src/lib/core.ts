@@ -8,6 +8,7 @@ import { PromptTemplate } from './prompts/types';
 import { createProgram } from './programs/program';
 import { ProgramBuilder } from './programs/types';
 import { store } from './storage';
+import { flow as createFlow } from './flow';
 
 /**
  * The main Selvedge instance that provides access to all library functionality
@@ -29,6 +30,58 @@ export const selvedge: SelvedgeInstance = {
    */
   models(modelMap: Record<string, ModelDefinition>): SelvedgeInstance {
     return ModelRegistry.registerModels(modelMap, this);
+  },
+
+  /**
+   * List all registered models with their aliases and definitions
+   * 
+   * @returns An array of objects containing model aliases and their definitions
+   * 
+   * @example
+   * ```typescript
+   * // Register some models
+   * selvedge.models({
+   *   fast: selvedge.openai("gpt-3.5-turbo"),
+   *   smart: selvedge.anthropic("claude-3-opus"),
+   * });
+   * 
+   * // List all registered models
+   * const models = selvedge.listModels();
+   * console.log(models);
+   * // [
+   * //   { alias: "fast", definition: { provider: "openai", model: "gpt-3.5-turbo", ... } },
+   * //   { alias: "smart", definition: { provider: "anthropic", model: "claude-3-opus", ... } }
+   * // ]
+   * ```
+   */
+  listModels(): Array<{ alias: string, definition: ModelDefinition }> {
+    return ModelRegistry.listModels();
+  },
+
+  /**
+   * Create a flow pipeline from a series of steps
+   * 
+   * @param steps - Array of steps to include in the pipeline
+   * @returns A flow pipeline that can be executed
+   * 
+   * @example
+   * ```typescript
+   * // Create a flow from a series of prompt templates
+   * const flow = selvedge.flow([
+   *   extractKeyPoints,
+   *   analyzeImplications,
+   *   generateRecommendations
+   * ]);
+   * 
+   * // Execute the flow
+   * const result = await flow(input);
+   * ```
+   */
+  flow<TInput = any, TOutput = any>(
+    steps: Array<any>
+  ) {
+    // Use the existing flow implementation from the flow module
+    return createFlow<TInput, TOutput>(...steps);
   },
 
   /**

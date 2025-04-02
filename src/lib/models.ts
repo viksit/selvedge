@@ -50,6 +50,21 @@ export class ModelRegistry {
   }
   
   /**
+   * List all registered models with their aliases and definitions
+   * 
+   * @returns An array of objects containing model aliases and their definitions
+   */
+  public static listModels(): Array<{ alias: string, definition: ModelDefinition }> {
+    const models: Array<{ alias: string, definition: ModelDefinition }> = [];
+    
+    registeredModels.forEach((definition, alias) => {
+      models.push({ alias, definition });
+    });
+    
+    return models;
+  }
+  
+  /**
    * Get or create a model adapter for a given model definition
    * 
    * @param modelDef - The model definition
