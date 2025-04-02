@@ -65,6 +65,9 @@ export interface ProgramBuilder<T = string> {
   /** ID used for persistence, if this program has been persisted */
   persistId?: string;
 
+  /** Flag to track if the program needs to be saved */
+  needsSave?: boolean;
+
   /** Add examples to the program builder */
   withExamples(examples: ProgramExample[]): ProgramBuilder<T>;
 
@@ -81,14 +84,14 @@ export interface ProgramBuilder<T = string> {
    * Execute the generated function with the given variables
    * Returns a proxy that allows direct function calls
    */
-  execute(variables?: ProgramVariables, options?: ProgramExecutionOptions): Promise<any>;
+  build(variables?: ProgramVariables, options?: ProgramExecutionOptions): Promise<any>;
 
   /** Specify the return type of the program */
   returns<R>(): ProgramBuilder<R>;
 
   /** Save this program for later use (legacy method) */
   persist(id: string): ProgramBuilder<T>;
-  
+
   /** 
    * Save this program with versioning
    * @param name Name to save the program under

@@ -148,6 +148,7 @@ export function createProgram<T = string>(
     modelDef, // Add modelDef property to the builder object
     generatedCode: null,
     persistId: undefined,
+    needsSave: false,
 
     withExamples(newExamples: ProgramExample[]): ProgramBuilder<T> {
       // Create a new builder with the updated examples
@@ -209,12 +210,8 @@ export function createProgram<T = string>(
         return this.generatedCode as unknown as T;
       }
 
-      // Log if we're forcing regeneration
-      if (options.forceRegenerate) {
-        debug('program', "forceRegenerate option is true - regenerating code even though cached code exists");
-      } else if (!this.generatedCode) {
-        debug('program', "No cached code found in generate() - generating for the first time");
-      }
+      // We'll let execute() handle all the logging to avoid duplication
+      // This method is called by execute(), so we don't need to log here
 
       // Prepare the execution options
       const execOptions = {
@@ -264,7 +261,7 @@ export function createProgram<T = string>(
       return codeResponse as unknown as T;
     },
 
-    async execute(variables: ProgramVariables = {}, options: ProgramExecutionOptions = {}): Promise<any> {
+    async build(variables: ProgramVariables = {}, options: ProgramExecutionOptions = {}): Promise<any> {
       try {
         // If we have a persist ID but no generated code yet, try to load it first
         if (this.persistId && !this.generatedCode && !options.forceRegenerate) {
@@ -273,10 +270,14 @@ export function createProgram<T = string>(
             if (existingProgram && existingProgram.generatedCode) {
               this.generatedCode = existingProgram.generatedCode;
               debug('persistence', `Loaded existing code from program "${this.persistId}"`);
+              this.needsSave = false; // Don't need to save if we loaded existing code
+            } else {
+              this.needsSave = true; // Need to save if we couldn't load existing code
             }
           } catch (error) {
             // If loading fails, we'll generate new code below
             debug('persistence', `No existing program "${this.persistId}" found or error loading it`);
+            this.needsSave = true; // Need to save if we couldn't load existing code
           }
         }
 
@@ -288,22 +289,27 @@ export function createProgram<T = string>(
 
         // Log if we're forcing regeneration
         if (options.forceRegenerate) {
-          debug('program', "forceRegenerate option is true - regenerating code even though cached code exists");
+          debug('program', "forceRegenerate option is true - regenerating code");
+          this.needsSave = true; // Need to save if we're forcing regeneration
         } else if (!this.generatedCode) {
           debug('program', "No cached code found in execute() - generating for the first time");
+          this.needsSave = true; // Need to save if we're generating for the first time
         }
 
         // Generate the code
         const code = await this.generate(variables, options);
-        
+
         // Store the generated code for future use
         this.generatedCode = String(code);
-        
-        // Save the generated code if we have a persist ID
-        if (this.persistId) {
+
+        // Save the generated code if we have a persist ID and need to save
+        if (this.persistId && this.needsSave) {
+          debug('persistence', `Saving program "${this.persistId}" to storage`);
           this.save(this.persistId).catch(error => {
             debug('persistence', `Error saving program "${this.persistId}":`, error);
           });
+          // Reset the flag after saving
+          this.needsSave = false;
         }
 
         return createFunctionProxy(String(code));
@@ -321,46 +327,13 @@ export function createProgram<T = string>(
     persist(id: string): ProgramBuilder<T> {
       // Store the persist ID
       this.persistId = id;
-      
+      this.needsSave = true;
+
       // For testing purposes - this is checked in tests
       console.log(`Program "${id}" has been persisted for later use`);
-      
-      // Check if a program with this ID already exists
-      store.load('program', id)
-        .then(existingProgram => {
-          if (existingProgram) {
-            debug('persistence', `Program "${id}" already exists, skipping save`);
 
-            // If the existing program has generated code, load it into this program
-            if (existingProgram.generatedCode) {
-              debug('persistence', `Loading generated code from existing program "${id}"`);
-              this.generatedCode = existingProgram.generatedCode;
-            }
-          } else {
-            // No existing program, save this one
-            debug('persistence', `No existing program "${id}" found, saving current program`);
-            this.save(id);
-          }
-          return this; // Return this for chaining within the promise
-        })
-        .catch(error => {
-          // Check if this is a "not found" error, which is expected for new programs
-          if (error.message && error.message.includes('No such file or directory')) {
-            debug('persistence', `No existing program "${id}" found, saving current program`);
-            this.save(id).catch(saveError => {
-              debug('persistence', `Error saving program "${id}":`, saveError);
-            });
-          } else {
-            // Log other unexpected errors
-            debug('persistence', `Error checking/persisting program "${id}":`, error);
-            // If there was an error checking, try to save anyway
-            this.save(id).catch(saveError => {
-              debug('persistence', `Error saving program "${id}":`, saveError);
-            });
-          }
-          return this; // Return this for chaining within the promise
-        });
-
+      // Instead of trying to load/save here, we'll defer to execute()
+      // This prevents duplicate saves and allows execute() to handle all persistence logic
       return this;
     },
 

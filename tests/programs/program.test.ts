@@ -13,14 +13,14 @@ describe('Program Generation', () => {
     selvedge.models({
       test: selvedge.mock('test-model')
     });
-    
+
     // Set up the mock responses
     const mockAdapter = ModelRegistry.getAdapter(selvedge.mock('test-model'));
     if (mockAdapter && typeof mockAdapter.setResponses === 'function') {
       mockAdapter.setResponses({
         chat: (messages) => {
           const userMessage = messages.find(m => m.role === 'user')?.content || '';
-          
+
           if (userMessage.includes('sort array')) {
             return '```javascript\nfunction sortArray(arr) {\n  return [...arr].sort((a, b) => a - b);\n}\n```';
           } else if (userMessage.includes('capitalize')) {
@@ -42,7 +42,7 @@ describe('Program Generation', () => {
       });
     }
   });
-  
+
   it('should create a program template', () => {
     const program = selvedge.program`Generate a function that ${task => task}`;
     expect(program).toBeDefined();
@@ -50,7 +50,7 @@ describe('Program Generation', () => {
     expect(program.exampleList).toBeInstanceOf(Array);
     expect(program.exampleList.length).toBe(0);
   });
-  
+
   it('should add examples to a program', () => {
     const program = selvedge.program`Generate a function that ${task => task}`
       .withExamples([
@@ -59,48 +59,48 @@ describe('Program Generation', () => {
           output: 'function sortArray(arr) {\n  return [...arr].sort();\n}'
         }
       ]);
-    
+
     expect(program.exampleList.length).toBe(1);
     expect(program.exampleList[0].input.task).toBe('sorts an array');
   });
-  
+
   it('should add examples using the examples method', () => {
     const program = selvedge.program`Generate a function that sorts an array`
       .examples({
         "sort numbers": "function sortNumbers(arr) {\n  return [...arr].sort((a, b) => a - b);\n}"
       });
-    
+
     expect(program.exampleList.length).toBe(1);
     expect(program.exampleList[0].input.input).toBe('sort numbers');
   });
-  
+
   it('should generate code using the mock adapter', async () => {
     const program = selvedge.program`Generate a function that ${task => task}`
       .using('test');
-    
+
     const code = await program.generate({ task: 'sort array of numbers' });
     expect(code).toContain('function sortArray');
     expect(code).toContain('sort((a, b)');
   });
-  
+
   it('should extract code from a response with markdown', async () => {
     const program = selvedge.program`Generate a function that ${task => task}`
       .using('test');
-    
+
     const code = await program.generate({ task: 'capitalizes a string' });
     expect(code).toContain('function capitalize');
     expect(code).not.toContain('```');
   });
-  
+
   it('should specify return type for a program', () => {
     interface FunctionResult {
       code: string;
       name: string;
     }
-    
+
     const program = selvedge.program`Generate a function that ${task => task}`
       .returns<FunctionResult>();
-    
+
     // This is just a type check, no runtime assertion needed
     expect(program).toBeDefined();
   });
@@ -109,8 +109,8 @@ describe('Program Generation', () => {
   it('should execute generated code and return a function proxy', async () => {
     const program = selvedge.program`Generate a function that ${task => task}`
       .using('test');
-    
-    const result = await program.execute({ task: 'add numbers' });
+
+    const result = await program.build({ task: 'add numbers' });
     expect(result).toBeDefined();
     expect(typeof result).toBe('function');
     expect(typeof result.add).toBe('function');
@@ -122,8 +122,8 @@ describe('Program Generation', () => {
   it('should access the first function when multiple functions are generated', async () => {
     const program = selvedge.program`Generate ${task => task}`
       .using('test');
-    
-    const result = await program.execute({ task: 'math utility functions' });
+
+    const result = await program.build({ task: 'math utility functions' });
     expect(result).toBeDefined();
     expect(typeof result).toBe('function');
     expect(typeof result.add).toBe('function');
@@ -140,37 +140,37 @@ describe('Program Generation', () => {
 
     // Create a unique program name for this test
     const programName = 'persist-test-program-' + Date.now();
-    
+
     // Create and persist the program
     const program = selvedge.program`Generate a function that ${task => task}`
       .using('test')
       .persist(programName);
-    
+
     // Verify the console output
     expect(logOutput).toBe(`Program "${programName}" has been persisted for later use`);
-    
+
     // Restore console.log
     console.log = originalConsoleLog;
-    
+
     // Wait longer for the background save to complete
     await new Promise(resolve => setTimeout(resolve, 500));
-    
+
     // Pre-generate the code to ensure it's ready when we load
     await program.generate({ task: 'add numbers' });
-    
+
     // Save it directly to ensure it's saved
     await program.save(programName);
-    
+
     // Try to load the program to verify it was actually saved
     const loadedProgram = await selvedge.loadProgram(programName);
-    
+
     // Verify the loaded program works
     expect(loadedProgram).toBeDefined();
-    expect(loadedProgram.execute).toBeDefined();
-    
+    expect(loadedProgram.build).toBeDefined();
+
     // Execute the loaded program
-    const result = await loadedProgram.execute();
-    
+    const result = await loadedProgram.build();
+
     // Verify the result
     expect(result).toBeDefined();
     expect(typeof result).toBe('function');
@@ -180,28 +180,28 @@ describe('Program Generation', () => {
   it('should save and load programs with save()', async () => {
     // Create a unique program name for this test
     const programName = 'save-test-program-' + Date.now();
-    
+
     // Create and save the program
     const program = selvedge.program`Generate a function that ${task => task}`
       .using('test');
-    
+
     // Pre-generate the code to ensure it's ready when we save
     await program.generate({ task: 'add numbers' });
-    
+
     // Save the program using the proper storage mechanism
     await program.save(programName);
-    
+
     // Now load the program from storage
     const loadedProgram = await selvedge.loadProgram(programName);
-    
+
     // Verify the loaded program is defined and has the expected properties
     expect(loadedProgram).toBeDefined();
-    expect(loadedProgram.execute).toBeDefined();
-    expect(typeof loadedProgram.execute).toBe('function');
-    
+    expect(loadedProgram.build).toBeDefined();
+    expect(typeof loadedProgram.build).toBe('function');
+
     // Execute the loaded program
-    const result = await loadedProgram.execute();
-    
+    const result = await loadedProgram.build();
+
     // Verify the result works as expected
     expect(result).toBeDefined();
     expect(typeof result).toBe('function');
@@ -212,7 +212,7 @@ describe('Program Generation', () => {
   it('should handle errors during code generation', async () => {
     const program = selvedge.program`Generate a function that ${task => task}`
       .using('test');
-    
+
     try {
       await program.generate({ task: 'invalid code' });
       // Should not reach here
@@ -232,9 +232,9 @@ describe('Program Generation', () => {
 
     const program = selvedge.program`Generate a function with an error`
       .using('test');
-    
+
     try {
-      await program.execute();
+      await program.build();
       // Should not reach here if properly handling errors
       expect(true).toBe(false);
     } catch (error) {
@@ -259,10 +259,10 @@ describe('Program Generation', () => {
     const program = selvedge.program`Generate a function that creates a person object`
       .using('test')
       .returns<Person>();
-    
-    const result = await program.execute();
+
+    const result = await program.build();
     const person = result.createPerson('John', 30);
-    
+
     expect(person).toHaveProperty('name');
     expect(person).toHaveProperty('age');
     expect(person.name).toBe('John');
@@ -272,27 +272,27 @@ describe('Program Generation', () => {
   it('should return clean objects without Object prototype methods when printed', async () => {
     const program = selvedge.program`Generate a function that ${task => task}`
       .using('test');
-    
-    const result = await program.execute({ task: 'word frequency counter' });
-    
+
+    const result = await program.build({ task: 'word frequency counter' });
+
     // Test the function by calling it with a sample text
     const frequencies = result.countWords('This is a test. This is only a test.');
-    
+
     // Check that the result is an object with the word frequencies
     expect(frequencies).toBeDefined();
     expect(typeof frequencies).toBe('object');
-    
+
     // Check that it contains the expected word frequencies
     expect(frequencies.this).toBe(2);
     expect(frequencies.is).toBe(2);
     expect(frequencies.a).toBe(2);
     expect(frequencies.test).toBe(2);
     expect(frequencies.only).toBe(1);
-    
+
     // When the object is printed or JSON.stringified, it should only contain the word frequencies
     const serialized = JSON.stringify(frequencies);
     const parsed = JSON.parse(serialized);
-    
+
     // The serialized object should only contain the word frequencies
     expect(Object.keys(parsed).length).toBe(5); // this, is, a, test, only
     expect(parsed.this).toBe(2);
@@ -300,7 +300,7 @@ describe('Program Generation', () => {
     expect(parsed.a).toBe(2);
     expect(parsed.test).toBe(2);
     expect(parsed.only).toBe(1);
-    
+
     // The serialized object should not contain any functions
     expect(Object.values(parsed).every(value => typeof value === 'number')).toBe(true);
   });
@@ -308,7 +308,7 @@ describe('Program Generation', () => {
   it('should save and load a program with generated code', async () => {
     // Create a unique program name for this test
     const programName = 'generated-code-test-' + Date.now();
-    
+
     // Create a program
     const p = selvedge.program`
       /**
@@ -318,19 +318,19 @@ describe('Program Generation', () => {
        * @returns The sum of a and b
        */
     `.using('test');
-    
+
     // Generate the code first
     await p.generate({ task: 'add numbers' });
-    
+
     // Save the program
     await p.save(programName);
-    
+
     // Load the program
     const loadedProgram = await selvedge.loadProgram(programName);
-    
+
     // Verify the loaded program has the generated code
     expect(loadedProgram.generatedCode).toBeDefined();
-    
+
     // Explicitly set the mock adapter to return the add function
     const mockAdapter = ModelRegistry.getAdapter(selvedge.mock('test-model'));
     if (mockAdapter && typeof mockAdapter.setResponses === 'function') {
@@ -338,20 +338,20 @@ describe('Program Generation', () => {
         chat: () => '```javascript\nfunction add(a, b) {\n  return a + b;\n}\n```'
       });
     }
-    
+
     // Execute the program without regenerating
-    const result = await loadedProgram.execute();
-    
+    const result = await loadedProgram.build();
+
     // Verify the result works as expected
     expect(result).toBeDefined();
     expect(typeof result).toBe('function');
     expect(result(2, 3)).toBe(5);
   });
-  
+
   it('should force regeneration of code when forceRegenerate option is true', async () => {
     // Create a unique program name for this test
     const programName = 'force-regen-test-' + Date.now();
-    
+
     // Create a program
     const p = selvedge.program`
       /**
@@ -361,19 +361,19 @@ describe('Program Generation', () => {
        * @returns The sum of a and b
        */
     `.using('test');
-    
+
     // Generate the code first
     await p.generate({ task: 'add numbers' });
-    
+
     // Save the program
     await p.save(programName);
-    
+
     // Load the program
     const loadedProgram = await selvedge.loadProgram(programName);
-    
+
     // Verify the loaded program has the generated code
     expect(loadedProgram.generatedCode).toBeDefined();
-    
+
     // Explicitly set the mock adapter to return the add function
     const mockAdapter = ModelRegistry.getAdapter(selvedge.mock('test-model'));
     if (mockAdapter && typeof mockAdapter.setResponses === 'function') {
@@ -381,10 +381,10 @@ describe('Program Generation', () => {
         chat: () => '```javascript\nfunction add(a, b) {\n  return a + b;\n}\n```'
       });
     }
-    
+
     // Execute with forceRegenerate option
-    const result = await loadedProgram.execute({}, { forceRegenerate: true });
-    
+    const result = await loadedProgram.build({}, { forceRegenerate: true });
+
     // We can't guarantee the code will be different since it's a mock,
     // but we can verify the execute method works
     expect(result).toBeDefined();

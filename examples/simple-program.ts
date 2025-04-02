@@ -9,7 +9,7 @@ selvedge.models({
   gpt4: selvedge.openai('gpt-4')
 });
 
-const p1 = selvedge.program`
+const counterSpec = selvedge.program`
 /** 
  * given some text, extract some frequency characteristics from it 
  * 
@@ -25,15 +25,17 @@ const p1 = selvedge.program`
 const sampleText = "This is a test. This is only a test.";
 
 // Execute the program with forceRegenerate option - this will regenerate the function even if it exists
-const freqencyCounter = await p1.execute({}, { forceRegenerate: true });
-// const freqencyCounter = await p1.execute();
-
+const freqencyCounter = await counterSpec.build({}, { forceRegenerate: true });
+// const freqencyCounter = await counterSpec.build();
+// console.log(freqencyCounter.g);
 // Use the generated function
 const result = freqencyCounter(sampleText);
 console.log("??? Word frequencies:", result);
+// Print the generated code
+console.log(counterSpec.generatedCode);
 
 // load the function from selvedge persistence
-const frequencyCounter2 = await selvedge.loadProgram('word-frequency')
-console.log("Loaded program:", frequencyCounter2.generatedCode)
-const lp = await frequencyCounter2.execute()
-console.log(">>>>", lp(sampleText))
+const frequencyCounterLoadedSpec = await selvedge.loadProgram('word-frequency')
+console.log("Loaded program:", frequencyCounterLoadedSpec.generatedCode)
+const frequencyCounterLoaded = await frequencyCounterLoadedSpec.build()
+console.log(">>>>", frequencyCounterLoaded(sampleText))
