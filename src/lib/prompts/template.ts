@@ -5,6 +5,8 @@ import { PromptVariables, PromptVariable, PromptSegment, PromptTemplate, PromptE
 import { ModelRegistry } from '../models';
 import { ModelDefinition, ModelProvider } from '../types';
 import { store } from '../storage';
+import * as z from 'zod';
+import { inferSchema, generateJsonExampleFromSchema, validateWithSchema } from '../schema';
 
 /**
  * Default variable renderer
@@ -153,11 +155,11 @@ export function createTemplate<T = any>(
 ): PromptTemplate<T> {
   const { segments, variables } = parseTemplate(strings, values);
   
-  const template: PromptTemplate<T> = {
+  const template: PromptTemplate<any> = {
     segments,
     variables,
     
-    render(variables: PromptVariables): string {
+    render(variables: PromptVariables = {}): string {
       return segments.map(segment => {
         if (typeof segment === 'string') {
           return segment;
@@ -181,7 +183,7 @@ export function createTemplate<T = any>(
     },
     
     async execute<R = T>(
-      variables: PromptVariables,
+      variables: PromptVariables = {},
       options: PromptExecutionOptions = {}
     ): Promise<R> {
       // Render the prompt
@@ -244,19 +246,44 @@ export function createTemplate<T = any>(
       return this.formatResponse(response) as unknown as R;
     },
     
-    returns<R>(): PromptTemplate<R> {
-      // Create a new template with the desired return type
-      return createTemplateFromBase<R>(this, {
+    returns<R>(schema?: z.ZodType<R>): PromptTemplate<R> {
+      // If no schema is provided, try to infer one from the type parameter
+      const zodSchema = schema || inferSchema<R>();
+      
+      // Generate an example from the schema
+      const example = generateJsonExampleFromSchema(zodSchema);
+      
+      // Create a new template with the example format appended
+      const enhancedTemplate = this.clone();
+      
+      // Only append format information if we have a non-empty example
+      if (example && example !== '{}' && example !== '[]') {
+        // Add the format example as a string segment
+        enhancedTemplate.segments.push(`\n\nYour response must be in this JSON format:\n${example}`);
+      }
+      
+      // Return a new template with the enhanced prompt and response handling
+      return createTemplateFromBase<R>(enhancedTemplate, {
         formatResponse: (response: string): R => {
-          // First try to extract JSON from the response
           const extractedJson = extractJsonFromString(response);
           if (extractedJson) {
-            return extractedJson as unknown as R;
+            try {
+              // Validate the extracted JSON against the schema
+              // Use silent option to avoid showing validation errors in the console
+              const validated = validateWithSchema(zodSchema, extractedJson, { silent: true });
+              if (validated) {
+                return validated as R;
+              }
+            } catch (e) {
+              // This catch block is less likely to be reached now with the silent option
+              console.warn('Response validation failed:', e);
+            }
+            // If validation fails, return as-is
+            return extractedJson as R;
           }
-          
-          // If no JSON could be extracted, return the raw response
           return response as unknown as R;
         },
+        
         // Preserve the save method
         save: async (name: string): Promise<PromptTemplate<R>> => {
           // Prepare data for storage
@@ -269,7 +296,7 @@ export function createTemplate<T = any>(
           await store.save('prompt', name, data);
           
           // Return this for chaining
-          return this as unknown as PromptTemplate<R>;
+          return enhancedTemplate as unknown as PromptTemplate<R>;
         }
       });
     },
