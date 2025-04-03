@@ -1,4 +1,5 @@
 import { selvedge } from '../src';
+selvedge.debug('*');
 
 // Sample product pages HTML
 const productPage1 = `
@@ -56,10 +57,18 @@ selvedge.models({
 // 1. Program to extract product info from HTML
 const extractProduct = selvedge.program`
 /**
- * Extract product information from HTML using simple html tag parsing. 
- * Make sure to use non browser level 
- * @param html - The HTML content of a product page
- * @returns Structured product information
+ * Extract product information from HTML using only simple string methods.
+ * 
+ * REQUIREMENTS:
+ * - Use ONLY built-in JavaScript string methods (no DOM, no cheerio, no browser APIs)
+ * - Focus on regex and string parsing
+ * - Handle potentially malformed HTML gracefully
+ * - Extract only basic product details (title, price, rating, etc.)
+ * - Keep the function SIMPLE and ERROR-RESISTANT
+ * - Avoid complex parsing architectures or frameworks
+ * 
+ * @param {string} html - HTML string from a product page
+ * @returns {object} - Basic product information
  */
 `
   .withExamples([
@@ -107,9 +116,18 @@ Analyze the following product information and enrich it with:
 2. The target audience for this product
 3. The main competitive advantage
 
-Product: ${params => JSON.stringify(params.product, null, 2)}
+Product: 
+${params => {
+    const product = params.product;
+    return `Title: ${product.title}
+Price: ${product.price}
+Rating: ${product.rating || 'N/A'}
+Review Count: ${product.reviewCount}
+Description: ${product.description}
+Features: ${product.features.join(', ')}`;
+  }}
 
-Provide your response as a JSON object with the original product data plus the new fields.
+Provide your response as a JSON object with the original product data plus the new fields (category, targetAudience, and competitiveAdvantage).
 `.returns<EnrichedProduct>()
   .using('claude');
 
@@ -125,18 +143,28 @@ Product 2: ${params => JSON.stringify(params.p2, null, 2)}
 // Step functions for the flow
 async function extractProductInfo() {
   console.log("Extracting product information...");
-  const extractor = await extractProduct.build({}, { forceRegenerate: true });
+  const extractor = await extractProduct.build({}, { forceRegenerate: false });
 
-  const product1 = extractor({ html: productPage1 });
-  const product2 = extractor({ html: productPage2 });
+  console.log("Function type:", typeof extractor);
+
+  const product1 = extractor(productPage1);
+  const product2 = extractor(productPage2);
+
+  console.log("Product 1 extracted:", JSON.stringify(product1, null, 2));
+  console.log("Product 2 extracted:", JSON.stringify(product2, null, 2));
 
   return { product1, product2 };
 }
 
 async function enrichProductInfo(input: { product1: Product; product2: Product }) {
   console.log("Enriching product information...");
+  console.log("Input to enrichProductInfo:", JSON.stringify(input, null, 2));
+
   const enriched1 = await enrichProduct.execute({ product: input.product1 });
   const enriched2 = await enrichProduct.execute({ product: input.product2 });
+
+  console.log("Enriched product 1:", JSON.stringify(enriched1, null, 2));
+  console.log("Enriched product 2:", JSON.stringify(enriched2, null, 2));
 
   return { ...input, enriched1, enriched2 };
 }
@@ -148,6 +176,8 @@ async function compareProductInfo(input: {
   enriched2: EnrichedProduct
 }) {
   console.log("Comparing products...");
+  console.log("Input to compareProductInfo:", JSON.stringify(input, null, 2));
+
   const comparison = await compareProducts.execute({
     p1: input.enriched1,
     p2: input.enriched2

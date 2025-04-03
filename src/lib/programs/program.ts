@@ -257,6 +257,17 @@ export function createProgram<T = string>(
 
       // Cache the generated code
       this.generatedCode = String(codeResponse);
+      
+      // Log detailed information about the generated code
+      debug('program', "Generated code from LLM:");
+      debug('program', "```javascript");
+      debug('program', String(codeResponse).split('\n').map(line => `  ${line}`).join('\n'));
+      debug('program', "```");
+      
+      // Log code size metrics
+      const codeLines = String(codeResponse).split('\n').length;
+      const codeChars = String(codeResponse).length;
+      debug('program', `Code metrics: ${codeLines} lines, ${codeChars} characters`);
 
       return codeResponse as unknown as T;
     },
@@ -284,7 +295,14 @@ export function createProgram<T = string>(
         // If we already have generated code and aren't forcing regeneration, use it directly
         if (this.generatedCode && !options.forceRegenerate) {
           debug('program', "Using existing generated code - no LLM call needed");
-          return createFunctionProxy(String(this.generatedCode));
+          debug('program', "Using cached code to create function proxy");
+          debug('program', "Cached code:");
+          debug('program', "```javascript");
+          debug('program', String(this.generatedCode).split('\n').map(line => `  ${line}`).join('\n'));
+          debug('program', "```");
+          const proxy = createFunctionProxy(String(this.generatedCode));
+          debug('program', "Function proxy created successfully from cached code");
+          return proxy;
         }
 
         // Log if we're forcing regeneration
@@ -295,12 +313,39 @@ export function createProgram<T = string>(
           debug('program', "No cached code found in execute() - generating for the first time");
           this.needsSave = true; // Need to save if we're generating for the first time
         }
+        
+        // Debug the model and execution options
+        const modelProvider = this.modelDef.provider;
+        const modelName = this.modelDef.model;
+        debug('program', `Using model: ${modelProvider}/${modelName}`);
+        debug('program', `Execution options: ${JSON.stringify(options, null, 2)}`);
+        debug('program', `Variables: ${JSON.stringify(variables, null, 2)}`);
+        debug('program', `Examples count: ${this.exampleList.length}`);
+        if (this.exampleList.length > 0) {
+          debug('program', `First example: ${JSON.stringify(this.exampleList[0], null, 2)}`);
+        }
 
         // Generate the code
         const code = await this.generate(variables, options);
 
         // Store the generated code for future use
         this.generatedCode = String(code);
+        
+        // Log the generated code in a nicely formatted way
+        debug('program', "Generated code:");
+        debug('program', "```javascript");
+        debug('program', String(code).split('\n').map(line => `  ${line}`).join('\n'));
+        debug('program', "```");
+        
+        // Try to extract function name for better logging
+        const functionNameMatch = String(code).match(/function\s+([a-zA-Z0-9_]+)/);
+        const functionName = functionNameMatch ? functionNameMatch[1] : 'anonymous';
+        debug('program', `Generated function: ${functionName}`);
+        
+        // Log code size metrics
+        const codeLines = String(code).split('\n').length;
+        const codeChars = String(code).length;
+        debug('program', `Code metrics: ${codeLines} lines, ${codeChars} characters`);
 
         // Save the generated code if we have a persist ID and need to save
         if (this.persistId && this.needsSave) {
@@ -312,7 +357,11 @@ export function createProgram<T = string>(
           this.needsSave = false;
         }
 
-        return createFunctionProxy(String(code));
+        // Log function creation
+        debug('program', "Creating function proxy from generated code");
+        const proxy = createFunctionProxy(String(code));
+        debug('program', "Function proxy created successfully");
+        return proxy;
       } catch (error) {
         debug('program', "Error executing program:", error);
         throw error;
