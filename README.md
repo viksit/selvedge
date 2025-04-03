@@ -1,6 +1,6 @@
 # Selvedge: A TypeScript DSL for LLM Programming
-**(Note: Very very very early alpha project. Please use as is, no guarantees made! File an issue if you run into one, or please submit a PR!)
-**
+**(⚠️Note: Very early alpha project. Please use as is, no guarantees made! File an issue if you run into one, or please submit a PR!⚠️)**
+
 Selvedge is a TypeScript Domain-Specific Language (DSL) for creating robust, type-safe interactions with Large Language Models (LLMs). It provides a consistent, structured approach to AI programming that eliminates boilerplate and brings predictability to generative AI workflows.
 
 *Selvedge is named after the distinctive finished edge on premium denim jeans that prevents fraying. It rethinks how to write computer programs with LLMs in a consistent way*
