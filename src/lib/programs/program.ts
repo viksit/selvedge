@@ -330,7 +330,7 @@ export function createProgram<T = string>(
       this.needsSave = true;
 
       // For testing purposes - this is checked in tests
-      console.log(`Program "${id}" has been persisted for later use`);
+      debug('program', `Program "${id}" has been persisted for later use`);
 
       // Instead of trying to load/save here, we'll defer to execute()
       // This prevents duplicate saves and allows execute() to handle all persistence logic
