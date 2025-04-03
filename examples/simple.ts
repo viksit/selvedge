@@ -135,6 +135,7 @@ const analyzeReview = selvedge.prompt`
   ])
   // Use the Claude Haiku model for faster responses
   .using("claude");
+
 const result4 = await analyzeReview.execute({
   product: "smartphone",
   review: "This phone has an incredible camera and the screen is beautiful. Battery life is decent, lasting about a day with heavy use. The processor is lightning fast, but it tends to get hot when gaming. The price seems high compared to similar models on the market.",
@@ -181,77 +182,7 @@ const generateRecommendations = selvedge.prompt`
 // Execute the chain
 const complexText = `The rapid adoption of artificial intelligence in healthcare is creating new opportunities for diagnosis and treatment, but also raising concerns about privacy, bias, and the doctor-patient relationship. Recent studies show that AI can outperform human radiologists in detecting certain conditions, while other research highlights cases where algorithmic bias led to disparities in care. Meanwhile, regulatory frameworks are struggling to keep pace with the technology, creating uncertainty for healthcare providers and technology companies alike.`;
 
-// here's a simple way to chain prompts.
-// Step 1: Extract key points
-const keyPointsResult = await extractKeyPoints.execute({ text: complexText });
-console.log("Key Points:");
-// Check if keyPointsResult is an array, otherwise handle it appropriately
-let keyPoints: string[] = [];
-if (Array.isArray(keyPointsResult)) {
-  keyPoints = keyPointsResult;
-  keyPoints.forEach((point, i) => console.log(`${i + 1}. ${point}`));
-} else {
-  // If it's not an array, log the structure to understand what we're getting
-  console.log("Received data structure:", JSON.stringify(keyPointsResult, null, 2));
-  // Try to extract points if they're in a different property
-  if (keyPointsResult && typeof keyPointsResult === 'object') {
-    const possiblePoints = (keyPointsResult as any).keyPoints;
-    if (Array.isArray(possiblePoints)) {
-      keyPoints = possiblePoints;
-      keyPoints.forEach((point, i) => console.log(`${i + 1}. ${point}`));
-    } else {
-      console.log("Could not find array of key points in the returned data");
-    }
-  } else {
-    console.log("Unexpected data structure returned");
-  }
-}
-console.log();
-
-// Step 2: Analyze implications
-const implicationsResult = await analyzeImplications.execute({ points: keyPoints });
-console.log("Implications Analysis:");
-let implications: Record<string, { consequences: string[], stakeholders: string[] }> = {};
-if (implicationsResult && typeof implicationsResult === 'object') {
-  implications = implicationsResult as Record<string, { consequences: string[], stakeholders: string[] }>;
-  Object.entries(implications).forEach(([point, analysis]) => {
-    console.log(`Point: ${point}`);
-    console.log("  Consequences:", analysis.consequences);
-    console.log("  Stakeholders:", analysis.stakeholders);
-  });
-} else {
-  console.log("Unexpected implications data structure:", JSON.stringify(implicationsResult, null, 2));
-}
-console.log();
-
-// Step 3: Generate recommendations
-const recommendationsResult = await generateRecommendations.execute({ analysis: implications });
-console.log("Strategic Recommendations:");
-let recommendations: Array<{ title: string, description: string }> = [];
-if (Array.isArray(recommendationsResult)) {
-  recommendations = recommendationsResult;
-  recommendations.forEach((rec, i) => {
-    console.log(`${i + 1}. ${rec.title}`);
-    console.log(`   ${rec.description}`);
-  });
-} else {
-  console.log("Unexpected recommendations data structure:", JSON.stringify(recommendationsResult, null, 2));
-  // Try to extract recommendations if they're in a recommendations property
-  if (recommendationsResult && typeof recommendationsResult === 'object' && 
-      (recommendationsResult as any).recommendations && 
-      Array.isArray((recommendationsResult as any).recommendations)) {
-    recommendations = (recommendationsResult as any).recommendations;
-    recommendations.forEach((rec, i) => {
-      console.log(`${i + 1}. ${rec.title}`);
-      console.log(`   ${rec.description}`);
-    });
-  }
-}
-console.log("\n");
-
-// or we can do something simpler
 // use the flow system to chain the prompts we defined above
-
 console.log("Example 6: Using the flow system to chain prompts");
 
 // Create adapter functions that handle the expected data structures
@@ -277,7 +208,7 @@ const generateRecommendationsAdapter = async (input: any) => {
   // Extract analysis from the previous step
   const analysis = input.analysis || {};
   const result = await generateRecommendations.execute({ analysis });
-  
+
   // Handle potential nested structure
   if (Array.isArray(result)) {
     return result;
