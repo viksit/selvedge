@@ -57,6 +57,13 @@ describe('Mock Adapter', () => {
     if (model) {
       const adapter = ModelRegistry.getAdapter(model);
       
+      // Set the expected response for this test
+      if (adapter && typeof adapter.setResponses === 'function') {
+        adapter.setResponses({
+          chat: 'Mock chat response'
+        });
+      }
+      
       // Test chat completion
       const messages = [
         { role: 'system', content: 'You are a helpful assistant.' },
