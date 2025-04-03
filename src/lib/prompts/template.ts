@@ -7,6 +7,8 @@ import { ModelDefinition, ModelProvider } from '../types';
 import { store } from '../storage';
 import * as z from 'zod';
 import { inferSchema, generateJsonExampleFromSchema, validateWithSchema } from '@schema/index';
+import { formatForPrompt } from '../utils/formatter';
+import { debug } from '../utils/debug';
 
 /**
  * Default variable renderer
@@ -24,8 +26,19 @@ const defaultRenderer = (value: any): string => {
     return String(value);
   }
   
-  // For objects and arrays, stringify with nice formatting
-  return JSON.stringify(value, null, 2);
+  // For objects and arrays, use our smart formatter
+  try {
+    // Use the new formatter for objects
+    return formatForPrompt(value);
+  } catch (e) {
+    debug('template', 'Error formatting object:', e);
+    // Fallback to JSON.stringify if formatting fails
+    try {
+      return JSON.stringify(value, null, 2);
+    } catch (e) {
+      return String(value);
+    }
+  }
 };
 
 /**
@@ -118,7 +131,7 @@ function createTemplateFromBase<T>(base: PromptTemplate<any>, overrides: Partial
           const value = segment.name in variables ? variables[segment.name] : '';
           // Apply the renderer function
           try {
-            return defaultRenderer(segment.renderer(value));
+            return defaultRenderer(segment.renderer(variables));
           } catch (e) {
             console.error(`Error rendering variable ${segment.name}:`, e);
             return defaultRenderer(value);
@@ -171,7 +184,7 @@ export function createTemplate<T = any>(
           const value = segment.name in variables ? variables[segment.name] : '';
           // Apply the renderer function
           try {
-            return defaultRenderer(segment.renderer(value));
+            return defaultRenderer(segment.renderer(variables));
           } catch (e) {
             console.error(`Error rendering variable ${segment.name}:`, e);
             return defaultRenderer(value);
@@ -186,8 +199,19 @@ export function createTemplate<T = any>(
       variables: PromptVariables = {},
       options: PromptExecutionOptions = {}
     ): Promise<R> {
+      // Debug information about the execution
+      debug('prompt', `Executing prompt template with ${Object.keys(variables).length} variables`);
+      debug('prompt', `Variables: ${JSON.stringify(variables, null, 2)}`);
+      debug('prompt', `Options: ${JSON.stringify(options, null, 2)}`);
+      
       // Render the prompt
       const prompt = this.render(variables);
+      
+      // Log the rendered prompt
+      debug('prompt', "Rendered prompt:");
+      debug('prompt', "```");
+      debug('prompt', prompt);
+      debug('prompt', "```");
       
       // Determine which model to use
       let modelDef: ModelDefinition;
@@ -211,6 +235,8 @@ export function createTemplate<T = any>(
           model: 'gpt-3.5-turbo',
         };
       }
+      
+      debug('prompt', `Using model: ${modelDef.provider}/${modelDef.model}`);
       
       // Get the adapter for this model
       const adapter = ModelRegistry.getAdapter(modelDef);
@@ -236,14 +262,35 @@ export function createTemplate<T = any>(
           messages.unshift({ role: 'system', content: options.system });
         }
         
+        debug('prompt', `Using chat interface with ${messages.length} messages`);
+        debug('prompt', `Messages: ${JSON.stringify(messages, null, 2)}`);
+        
         response = await adapter.chat(messages, options);
       } else {
+        debug('prompt', `Using completion interface`);
+        
         // Use completion interface
         response = await adapter.complete(prompt, options);
       }
       
+      // Log the raw response
+      debug('prompt', "Raw response from model:");
+      debug('prompt', "```");
+      debug('prompt', response);
+      debug('prompt', "```");
+      
       // Format the response based on the expected return type
-      return this.formatResponse(response) as unknown as R;
+      const formattedResponse = this.formatResponse(response);
+      
+      // Log the formatted response
+      debug('prompt', "Formatted response:");
+      debug('prompt', "```json");
+      debug('prompt', typeof formattedResponse === 'string' 
+        ? formattedResponse 
+        : JSON.stringify(formattedResponse, null, 2));
+      debug('prompt', "```");
+      
+      return formattedResponse as unknown as R;
     },
     
     returns<R>(schema?: z.ZodType<R>): PromptTemplate<R> {

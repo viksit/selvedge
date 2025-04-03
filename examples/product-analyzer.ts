@@ -116,16 +116,7 @@ Analyze the following product information and enrich it with:
 2. The target audience for this product
 3. The main competitive advantage
 
-Product: 
-${params => {
-    const product = params.product;
-    return `Title: ${product.title}
-Price: ${product.price}
-Rating: ${product.rating || 'N/A'}
-Review Count: ${product.reviewCount}
-Description: ${product.description}
-Features: ${product.features.join(', ')}`;
-  }}
+Product: ${params => params.product}
 
 Provide your response as a JSON object with the original product data plus the new fields (category, targetAudience, and competitiveAdvantage).
 `.returns<EnrichedProduct>()
@@ -135,9 +126,9 @@ Provide your response as a JSON object with the original product data plus the n
 const compareProducts = selvedge.prompt`
 Compare these two products and provide a brief recommendation for which one offers better value:
 
-Product 1: ${params => JSON.stringify(params.p1, null, 2)}
+Product 1: ${params => params.p1}
 
-Product 2: ${params => JSON.stringify(params.p2, null, 2)}
+Product 2: ${params => params.p2}
 `.using('claude');
 
 // Step functions for the flow
@@ -177,7 +168,6 @@ async function compareProductInfo(input: {
 }) {
   console.log("Comparing products...");
   console.log("Input to compareProductInfo:", JSON.stringify(input, null, 2));
-
   const comparison = await compareProducts.execute({
     p1: input.enriched1,
     p2: input.enriched2
