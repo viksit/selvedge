@@ -54,7 +54,8 @@ import { selvedge } from 'selvedge';
 selvedge.models({
   fast: selvedge.openai('gpt-3.5-turbo'),
   smart: selvedge.anthropic('claude-3-5-haiku-20241022'),
-  // For testing without API calls
+  // For testing without API calls to run through pipelines
+  // Experimental
   mock: selvedge.mock('test-model')
 });
 ```
@@ -76,7 +77,9 @@ selvedge.models({
 });
 
 // Create a simple prompt template
-const summarize = selvedge.prompt`Summarize this text in one sentence: ${text => text}`.using('claude');
+const summarize = selvedge.prompt`
+  Summarize this text in one sentence: ${text => text}
+`.using('claude');
 
 // Use the prompt
 const text = "This article examines potential regulatory pathways for AI in the United States...";
@@ -729,6 +732,64 @@ analyzeNewsArticle().catch(console.error);
 6. **Testing**: Use mock models for testing to avoid API costs.
 7. **Flow Construction**: Build complex flows incrementally, testing each step.
 
-## Conclusion
+## Command Line Interface
 
-Selvedge provides a powerful way to integrate AI capabilities into your TypeScript applications with strong type safety. The combination of prompts, programs, and flows allows you to create sophisticated AI-powered features while maintaining clean, maintainable code.
+Selvedge includes a CLI for managing your saved prompts and programs. After installation, you can access it using the `selvedge` command:
+
+```bash
+# List all saved prompts and programs
+selvedge list
+
+# List only prompts or programs
+selvedge list --prompts
+selvedge list --programs
+
+# Show detailed information with the verbose flag
+selvedge list --verbose
+
+# List all versions of a prompt or program
+selvedge versions prompt <prompt-name>
+selvedge versions program <program-name>
+
+# Show detailed information about a prompt or program
+selvedge info prompt <prompt-name>
+selvedge info program <program-name>
+
+# Add tags to a prompt or program
+selvedge tag <type> <name> <tag1> <tag2> ...
+```
+
+## Debugging
+
+Selvedge includes a built-in debug system that helps you understand what's happening under the hood. You can enable debugging globally or for specific namespaces:
+
+```typescript
+// Enable debugging for all namespaces
+selvedge.debug('all');
+
+// Enable debugging for specific namespaces
+selvedge.debug('program,prompt');
+
+// Enable debugging with more control
+selvedge.debug({
+  enabled: true,
+  namespaces: ['program', 'persistence', 'llm']
+});
+```
+
+Available debug namespaces include:
+- `program`: Program generation and execution
+- `prompt`: Prompt template rendering and execution
+- `persistence`: Storage and retrieval of prompts and programs
+- `llm`: LLM API calls and responses
+- `flow`: Flow execution and steps
+- `formatter`: Object formatting for prompts
+
+When debugging is enabled, you'll see detailed logs prefixed with the namespace:
+
+```
+[program] Generating code for program "extract-data"
+[llm] Sending request to OpenAI API
+[prompt] Rendered prompt: ...
+```
+
