@@ -213,9 +213,9 @@ export function formatForPrompt(value: any, options: FormatterOptions = {}): str
     
     // For objects and arrays, add a type hint
     if (Array.isArray(value)) {
-      return `${formatted}`;
+      return `Array with ${value.length} items:\n${formatted}`;
     } else if (typeof value === 'object') {
-      return `${formatted}`;
+      return `Object with properties:\n${formatted}`;
     }
     
     return formatted;

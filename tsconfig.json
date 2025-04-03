@@ -3,7 +3,10 @@
     "target": "ES2020",
     "module": "ESNext",
     "moduleResolution": "node",
-    "lib": ["ESNext", "DOM"],
+    "lib": [
+      "ESNext",
+      "DOM"
+    ],
     "outDir": "dist",
     "declaration": true,
     "declarationMap": true,
@@ -19,22 +22,64 @@
     "noImplicitReturns": true,
     "baseUrl": ".",
     "paths": {
-      "@schema/*": ["src/lib/schema/*"],
-      "@schema": ["src/lib/schema"],
-      "@inference": ["src/lib/schema/inference"],
-      "@examples": ["src/lib/schema/examples"],
-      "@models/*": ["src/lib/models/*"],
-      "@models": ["src/lib/models"],
-      "@storage/*": ["src/lib/storage/*"],
-      "@storage": ["src/lib/storage"],
-      "@types/*": ["src/lib/types/*"],
-      "@types": ["src/lib/types"],
-      "@prompts/*": ["src/lib/prompts/*"],
-      "@prompts": ["src/lib/prompts"],
-      "@tests/programs/*": ["tests/programs/*"]
+      "@flow/*": [
+        "src/lib/flow/*"
+      ],
+      "@flow": [
+        "src/lib/flow"
+      ],
+      "@schema/*": [
+        "src/lib/schema/*"
+      ],
+      "@schema": [
+        "src/lib/schema"
+      ],
+      "@inference": [
+        "src/lib/schema/inference"
+      ],
+      "@examples": [
+        "src/lib/schema/examples"
+      ],
+      "@models/*": [
+        "src/lib/models/*"
+      ],
+      "@models": [
+        "src/lib/models"
+      ],
+      "@storage/*": [
+        "src/lib/storage/*"
+      ],
+      "@storage": [
+        "src/lib/storage"
+      ],
+      "@types/*": [
+        "src/lib/types/*"
+      ],
+      "@types": [
+        "src/lib/types"
+      ],
+      "@prompts/*": [
+        "src/lib/prompts/*"
+      ],
+      "@prompts": [
+        "src/lib/prompts"
+      ],
+      "@tests/programs/*": [
+        "tests/programs/*"
+      ]
     },
-    "typeRoots": ["./node_modules/@types", "./types"]
+    "typeRoots": [
+      "./node_modules/@types",
+      "./types"
+    ]
   },
-  "include": ["src/**/*", "tests/**/*", "types/**/*"],
-  "exclude": ["node_modules", "dist"]
+  "include": [
+    "src/**/*",
+    "tests/**/*",
+    "types/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
 }

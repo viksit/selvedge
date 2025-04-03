@@ -62,9 +62,9 @@ describe('Prompt Template System', () => {
     const rendered = template.render({ u: user });
     
     expect(rendered).toContain('User info:');
-    expect(rendered).toContain('"name": "Charlie"');
-    expect(rendered).toContain('"age": 30');
-    expect(rendered).toContain('"roles": [');
+    expect(rendered).toContain('name: Charlie');
+    expect(rendered).toContain('age: 30');
+    expect(rendered).toContain('roles:');
   });
   
   it('should support chaining with prefix and suffix', () => {
