@@ -141,6 +141,9 @@ export function createProgram<T = string>(
 
   // Examples for few-shot learning
   let exampleList: ProgramExample[] = [];
+  
+  // Private storage for execution options
+  let _executionOptions: ProgramExecutionOptions = {};
 
   const builder: ProgramBuilder<T> = {
     template,
@@ -149,6 +152,11 @@ export function createProgram<T = string>(
     generatedCode: null,
     persistId: undefined,
     needsSave: false,
+    
+    options(opts: ProgramExecutionOptions): ProgramBuilder<T> {
+      _executionOptions = { ..._executionOptions, ...opts };
+      return this;
+    },
 
     withExamples(newExamples: ProgramExample[]): ProgramBuilder<T> {
       // Create a new builder with the updated examples
@@ -415,7 +423,21 @@ export function createProgram<T = string>(
     }
   };
 
-  return builder;
+  // Options method is already added to the builder object
+  
+  // Create a proxy to make the program builder directly callable
+  return new Proxy(builder, {
+    apply: async (target, _thisArg, args) => {
+      // When called as a function, build the program and then call it with the provided arguments
+      const func = await target.build({}, _executionOptions);
+      
+      // Call the generated function with the provided arguments
+      const result = func.apply(null, args);
+      
+      // If the result is a Promise, return it directly, otherwise wrap it in a Promise
+      return result instanceof Promise ? result : Promise.resolve(result);
+    }
+  }) as ProgramBuilder<T>;
 }
 
 /**

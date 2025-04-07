@@ -50,6 +50,9 @@ export interface ProgramExample {
  * A program builder for constructing code generation programs
  */
 export interface ProgramBuilder<T = string> {
+  /** Call signature - makes the program directly callable */
+  (...args: any[]): Promise<T>;
+
   /** The underlying prompt template */
   template: PromptTemplate;
 
@@ -88,6 +91,9 @@ export interface ProgramBuilder<T = string> {
 
   /** Specify the return type of the program */
   returns<R>(): ProgramBuilder<R>;
+
+  /** Set execution options for this program */
+  options(opts: ProgramExecutionOptions): ProgramBuilder<T>;
 
   /** Save this program for later use (legacy method) */
   persist(id: string): ProgramBuilder<T>;

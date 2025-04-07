@@ -77,6 +77,9 @@ export type PromptSegment = string | PromptVariable;
  * A compiled prompt template
  */
 export interface PromptTemplate<T = any> {
+  /** Call signature - makes the template directly callable */
+  (variables?: PromptVariables, options?: PromptExecutionOptions): Promise<T>;
+  
   /** Array of text and variable segments */
   segments: PromptSegment[];
   
@@ -115,6 +118,9 @@ export interface PromptTemplate<T = any> {
   
   /** Specify the model to use for this prompt */
   using: (model: string | import('../types').ModelDefinition) => PromptTemplate<T>;
+  
+  /** Set execution options for this prompt */
+  options: (opts: PromptExecutionOptions) => PromptTemplate<T>;
   
   /** Save this prompt for later use (legacy method) */
   persist: (id: string) => PromptTemplate<T>;

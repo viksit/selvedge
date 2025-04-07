@@ -118,14 +118,105 @@ export function parseTemplate(
 }
 
 /**
+ * Symbol used to mark a template object as already callable
+ */
+const CALLABLE_MARKER = Symbol('callable');
+
+/**
+ * Base template object interface without the callable signature
+ */
+interface TemplateObject<T> {
+  segments: PromptSegment[];
+  variables: PromptVariable[];
+  persistId?: string;
+  needsSave?: boolean;
+  _executionOptions?: PromptExecutionOptions;
+  [CALLABLE_MARKER]?: boolean;
+  
+  render(variables: PromptVariables): string;
+  execute<R = T>(variables: PromptVariables, options?: PromptExecutionOptions): Promise<R>;
+  returns<R = T>(): PromptTemplate<R>;
+  formatResponse(response: string): T;
+  prefix(text: string): PromptTemplate<T>;
+  suffix(text: string): PromptTemplate<T>;
+  clone(): PromptTemplate<T>;
+  train(examples: Array<{ text: any, output: T }>): PromptTemplate<T>;
+  using(model: string | import('../types').ModelDefinition): PromptTemplate<T>;
+  options(opts: PromptExecutionOptions): PromptTemplate<T>;
+  persist(id: string): PromptTemplate<T>;
+  save(name: string): Promise<PromptTemplate<T>>;
+}
+
+/**
+ * Helper function to create a callable proxy around a template object
+ */
+function makeTemplateCallable<T>(template: TemplateObject<T>): PromptTemplate<T> {
+  // If this template is already callable (has our proxy), return it as is
+  if (template[CALLABLE_MARKER]) {
+    return template as unknown as PromptTemplate<T>;
+  }
+  
+  // Mark the template as callable to prevent double-wrapping
+  template[CALLABLE_MARKER] = true;
+  
+  return new Proxy(template, {
+    // Handler for function calls (e.g., template({...}))
+    apply: (_target, _thisArg, args) => {
+      // When called as a function, execute the prompt with the provided arguments
+      const [variables = {}, options = {}] = args;
+      // Merge stored options with call-time options
+      const mergedOptions = { ...(template._executionOptions || {}), ...options };
+      return template.execute(variables, mergedOptions);
+    },
+    // Handler for property access (e.g., template.render)
+    get: (target, prop, receiver) => {
+      // Get the property from the target
+      const value = Reflect.get(target, prop, receiver);
+      
+      // If the property is a method that returns a PromptTemplate, ensure the result is callable
+      if (typeof value === 'function' && 
+          prop !== 'execute' && 
+          prop !== 'render' && 
+          prop !== 'formatResponse') {
+        // Replace method with a wrapped version that ensures the return value is callable
+        return function(...args: any[]) {
+          const result = value.apply(target, args);
+          // If result is a template, ensure it's callable
+          if (result && typeof result === 'object' && 'segments' in result) {
+            return makeTemplateCallable(result as TemplateObject<any>);
+          }
+          return result;
+        };
+      }
+      
+      return value;
+    }
+  }) as PromptTemplate<T>;
+}
+
+/**
  * Create a new template with custom props from a base template
  */
-function createTemplateFromBase<T>(base: PromptTemplate<any>, overrides: Partial<PromptTemplate<T>>): PromptTemplate<T> {
+function createTemplateFromBase<T>(base: TemplateObject<any>, overrides: Partial<TemplateObject<T>>): PromptTemplate<T> {
+  // Get the private execution options from the base template
+  const _executionOptions = { ...((base._executionOptions || {})) };
+  
   // Create a new template that uses the provided segments but keeps the original methods
-  const newTemplate: PromptTemplate<T> = { 
+  const newTemplate: TemplateObject<T> = { 
     // Copy the original properties
     segments: [...base.segments],
     variables: [...base.variables],
+    persistId: base.persistId,
+    needsSave: base.needsSave,
+    
+    // Add the options method
+    options(opts: PromptExecutionOptions): PromptTemplate<T> {
+      // Store the options
+      this._executionOptions = { ...(this._executionOptions || {}), ...opts };
+      
+      // Create a new template with the same properties and make it callable
+      return createTemplateFromBase<T>(this, {});
+    },
     
     // Create a new render function that uses the new segments
     render: function(variables: PromptVariables): string {
@@ -169,12 +260,17 @@ function createTemplateFromBase<T>(base: PromptTemplate<any>, overrides: Partial
     train: base.train,
     using: base.using,
     persist: base.persist,
+    save: base.save,
     
     // Apply any overrides
     ...overrides
-  } as PromptTemplate<T>;
+  };
   
-  return newTemplate;
+  // Store the execution options privately
+  newTemplate._executionOptions = _executionOptions;
+  
+  // Create a proxy to make the template directly callable
+  return makeTemplateCallable<T>(newTemplate);
 }
 
 /**
@@ -186,11 +282,22 @@ export function createTemplate<T = any>(
 ): PromptTemplate<T> {
   const { segments, variables } = parseTemplate(strings, values);
   
-  const template: PromptTemplate<any> = {
+  // Private storage for execution options
+  let _executionOptions: PromptExecutionOptions = {};
+  
+  // Create a callable template object that matches the PromptTemplate interface
+  const template: TemplateObject<T> = {
     segments,
     variables,
     persistId: undefined,
     needsSave: false,
+    _executionOptions: {},
+    
+    options(opts: PromptExecutionOptions): PromptTemplate<T> {
+      this._executionOptions = { ...(this._executionOptions || {}), ...opts };
+      // Create a new template with the same properties to preserve callable functionality
+      return createTemplateFromBase<T>(this, {});
+    },
     
     render(variables: PromptVariables = {}): string {
       return segments.map(segment => {
@@ -363,7 +470,7 @@ export function createTemplate<T = any>(
         enhancedTemplate.segments.push(`\n\nYour response must be in this JSON format:\n${example}`);
       }
       
-      // Return a new template with the enhanced prompt and response handling
+      // Create a new template with the enhanced prompt and response handling
       return createTemplateFromBase<R>(enhancedTemplate, {
         formatResponse: (response: string): R => {
           const extractedJson = extractJsonFromString(response);
@@ -383,33 +490,6 @@ export function createTemplate<T = any>(
             return extractedJson as R;
           }
           return response as unknown as R;
-        },
-        
-        // Preserve the persist and save methods
-        persist: (id: string): PromptTemplate<R> => {
-          // Store the persist ID
-          enhancedTemplate.persistId = id;
-          enhancedTemplate.needsSave = true;
-
-          // For testing purposes - this is checked in tests
-          debug('prompt', `Prompt "${id}" has been persisted for later use`);
-
-          // Return for chaining
-          return enhancedTemplate as unknown as PromptTemplate<R>;
-        },
-        
-        save: async (name: string): Promise<PromptTemplate<R>> => {
-          // Prepare data for storage
-          const data = {
-            segments: this.segments,
-            variables: this.variables
-          };
-          
-          // Save to storage
-          await store.save('prompt', name, data);
-          
-          // Return this for chaining
-          return enhancedTemplate as unknown as PromptTemplate<R>;
         }
       });
     },
@@ -472,16 +552,14 @@ export function createTemplate<T = any>(
     },
     
     persist(id: string): PromptTemplate<T> {
-      // Store the persist ID
-      this.persistId = id;
-      this.needsSave = true;
-
       // For testing purposes - this is checked in tests
       debug('prompt', `Prompt "${id}" has been persisted for later use`);
 
-      // Instead of trying to load/save here, we'll defer to execute()
-      // This prevents duplicate saves and allows execute() to handle all persistence logic
-      return this;
+      // Create a new template with the persist ID and needsSave flag set
+      return createTemplateFromBase<T>(this, {
+        persistId: id,
+        needsSave: true
+      });
     },
     
     async save(name: string): Promise<PromptTemplate<T>> {
@@ -494,12 +572,18 @@ export function createTemplate<T = any>(
       // Save to storage
       await store.save('prompt', name, data);
       
-      // Return this for chaining
-      return this;
+      // Create a new template with the same properties to preserve the callable functionality
+      return createTemplateFromBase<T>(this, {});
     }
   };
   
-  return template;
+  // Options method is already added to the template object
+  
+  // Store the execution options in the template for access by other methods
+  (template as any)._executionOptions = _executionOptions;
+  
+  // Create a proxy to make the template directly callable
+  return makeTemplateCallable<T>(template);
 }
 
 /**
