@@ -48,21 +48,48 @@ async function main() {
     console.error('Error calling template:', error);
   }
   
-  // Program example
-  const wordCounter = selvedge.program`
+  // Program example with step-by-step debugging
+  console.log('\n----- PROGRAM DEBUG -----');
+  
+  // Step 1: Create initial program template
+  const pgStep1 = selvedge.program`
     /**
      * Count the frequency of words in a text
      * @param text - The text to analyze
      * @returns An object mapping each word to its frequency
      */
-  `.returns<{ [word: string]: number }>()
-   .using("gpt4")
-   .options({ forceRegenerate: false })
-   .persist("word-counter");
+  `;
+  console.log('PG Step 1 - Is callable?', typeof pgStep1 === 'function'); 
+  console.log('PG Step 1 - Properties:', Object.getOwnPropertyNames(pgStep1));
   
-  const frequency = await wordCounter("This is a test. This is only a test.");
+  // Step 2: Call returns() method
+  const pgStep2 = pgStep1.returns<{ [word: string]: number }>();
+  console.log('PG Step 2 - After returns() is callable?', typeof pgStep2 === 'function');
+  console.log('PG Step 2 - Properties:', Object.getOwnPropertyNames(pgStep2));
   
-  console.log("Word frequency:", frequency);
+  // Step 3: Call using() method
+  const pgStep3 = pgStep2.using("gpt4");
+  console.log('PG Step 3 - After using() is callable?', typeof pgStep3 === 'function');
+  console.log('PG Step 3 - Properties:', Object.getOwnPropertyNames(pgStep3));
+  
+  // Step 4: Call options() method
+  const pgStep4 = pgStep3.options({ forceRegenerate: false });
+  console.log('PG Step 4 - After options() is callable?', typeof pgStep4 === 'function');
+  console.log('PG Step 4 - Properties:', Object.getOwnPropertyNames(pgStep4));
+  
+  // Step 5: Call persist() method
+  const pgStep5 = pgStep4.persist("word-counter");
+  console.log('PG Step 5 - After persist() is callable?', typeof pgStep5 === 'function');
+  console.log('PG Step 5 - Properties:', Object.getOwnPropertyNames(pgStep5));
+  
+  // Final step: Call the function
+  console.log('PG Final - Attempting to call the program function');
+  try {
+    const frequency = await pgStep5("This is a test. This is only a test.");
+    console.log("Word frequency:", frequency);
+  } catch (error) {
+    console.error('Error calling program:', error);
+  }
 }
 
 main().catch(console.error);

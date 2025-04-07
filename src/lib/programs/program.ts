@@ -2,6 +2,11 @@
  * Program generation implementation
  */
 import { ProgramBuilder, ProgramExample, ProgramVariables, ProgramExecutionOptions } from './types';
+
+/**
+ * Symbol used to mark a program builder as already callable
+ */
+const CALLABLE_MARKER = Symbol('callable');
 import { createTemplate } from '../prompts/template';
 import { ModelRegistry } from '../models';
 import { ModelDefinition, ModelProvider } from '../types';
@@ -124,12 +129,115 @@ function createFunctionProxy(code: string): any {
 }
 
 /**
+ * Helper function to create a callable proxy around a program builder
+ */
+export function makeProgramCallable<T>(builder: any): ProgramBuilder<T> {
+  debug('program', 'makeProgramCallable called');
+  debug('program', 'Builder props:', Object.getOwnPropertyNames(builder));
+  
+  // Check if the builder is already callable
+  const isCallable = typeof builder === 'function';
+  debug('program', 'Already callable?', isCallable);
+  
+  if (builder[CALLABLE_MARKER]) {
+    debug('program', 'Builder is already marked as callable, returning');
+    return builder as ProgramBuilder<T>;
+  }
+  
+  debug('program', 'Creating proxy wrapper with function target');
+  
+  // Create a base function that will be our callable builder
+  const baseFunction = async function(...args: any[]) {
+    debug('program', 'Program function called with args:', args);
+    // When called as a function, build the program and then call it with the provided arguments
+    const func = await builder.build({}, builder._executionOptions || {});
+    
+    // Call the generated function with the provided arguments
+    const result = func.apply(null, args);
+    
+    // If the result is a Promise, return it directly, otherwise wrap it in a Promise
+    return result instanceof Promise ? result : Promise.resolve(result);
+  };
+  
+  // First, directly wrap all method properties that should return program builders
+  // This is the critical part - methods must be wrapped BEFORE they're copied to the base function
+  const methodsThatReturnBuilder = ['withExamples', 'examples', 'using', 'options', 'returns', 'persist', 'save'];
+  const wrappedMethods: Record<string, Function> = {};
+  
+  methodsThatReturnBuilder.forEach(methodName => {
+    const originalMethod = builder[methodName];
+    if (typeof originalMethod === 'function') {
+      debug('program', `Pre-wrapping method: ${methodName}`);
+      wrappedMethods[methodName] = function(...args: any[]) {
+        debug('program', `Calling pre-wrapped method: ${methodName}`);
+        const result = originalMethod.apply(builder, args);
+        // Always ensure the result is callable
+        if (result && typeof result === 'object') {
+          debug('program', `Making result from ${methodName} callable`);
+          const callableResult = makeProgramCallable(result);
+          debug('program', `Result from ${methodName} callable? ${typeof callableResult === 'function'}`);
+          return callableResult;
+        }
+        return result;
+      };
+    }
+  });
+  
+  // Now copy all properties from the builder to the function, using our wrapped methods
+  Object.getOwnPropertyNames(builder).forEach(prop => {
+    if (prop !== 'constructor') {
+      if (prop in wrappedMethods) {
+        (baseFunction as any)[prop] = wrappedMethods[prop];
+      } else {
+        (baseFunction as any)[prop] = (builder as any)[prop];
+      }
+    }
+  });
+  
+  // Mark as callable
+  (baseFunction as any)[CALLABLE_MARKER] = true;
+  
+  debug('program', 'Base is callable?', typeof baseFunction === 'function');
+  
+  // Create the proxy
+  const proxy = new Proxy(baseFunction, {
+    apply: (target, thisArg, args) => {
+      debug('program', 'Proxy apply trap called');
+      return target.apply(thisArg, args);
+    },
+    get: (target, prop, receiver) => {
+      // Get the property
+      debug('program', `Proxy get trap called for property: ${String(prop)}`);
+      const value = Reflect.get(target, prop, receiver);
+      
+      // Log property type
+      debug('program', `Property type: ${typeof value}`);
+      
+      // Return the value - methods are already wrapped
+      return value;
+    }
+  }) as ProgramBuilder<T>;
+  
+  debug('program', 'Final proxy is callable?', typeof proxy === 'function');
+  debug('program', 'Final proxy has callable returns()?', typeof proxy.returns === 'function');
+  
+  // Test if returns() maintains callability
+  const returnsMethod = proxy.returns;
+  if (typeof returnsMethod === 'function') {
+    debug('program', 'Testing if returns() maintains callable status');
+  }
+  
+  return proxy;
+}
+
+/**
  * Create a new program builder
  */
 export function createProgram<T = string>(
   strings: TemplateStringsArray,
   values: any[]
 ): ProgramBuilder<T> {
+  debug('program', 'createProgram called with template string');
   // Create the underlying prompt template
   const template = createTemplate(strings, values);
 
@@ -155,14 +263,16 @@ export function createProgram<T = string>(
     
     options(opts: ProgramExecutionOptions): ProgramBuilder<T> {
       _executionOptions = { ..._executionOptions, ...opts };
-      return this;
+      // Store the options on the object as well, so they're preserved in clones
+      (this as any)._executionOptions = _executionOptions;
+      return makeProgramCallable(this);
     },
 
     withExamples(newExamples: ProgramExample[]): ProgramBuilder<T> {
       // Create a new builder with the updated examples
       const newBuilder = { ...this };
       newBuilder.exampleList = [...exampleList, ...newExamples];
-      return newBuilder;
+      return makeProgramCallable(newBuilder);
     },
 
     examples(inputOutputMap: Record<string, any>): ProgramBuilder<T> {
@@ -174,6 +284,7 @@ export function createProgram<T = string>(
 
       // Create a new builder with the updated examples
       return this.withExamples(newExamples);
+      // Note: No need to wrap with makeProgramCallable here since withExamples already does it
     },
 
     using(model: ModelDefinition | string): ProgramBuilder<T> {
@@ -194,7 +305,7 @@ export function createProgram<T = string>(
         newBuilder.modelDef = model;
       }
 
-      return newBuilder;
+      return makeProgramCallable(newBuilder);
     },
 
     async generate(variables: ProgramVariables = {}, options: ProgramExecutionOptions = {}): Promise<T> {
@@ -377,8 +488,13 @@ export function createProgram<T = string>(
     },
 
     returns<R>(): ProgramBuilder<R> {
+      debug('program', 'Original returns<R>() method called');
       // Create a new builder with the updated return type
-      return this as unknown as ProgramBuilder<R>;
+      const typedBuilder = { ...this } as any;
+      debug('program', 'returns() created new builder, making callable');
+      const result = makeProgramCallable<R>(typedBuilder);
+      debug('program', 'returns() final result callable?', typeof result === 'function');
+      return result;
     },
 
     persist(id: string): ProgramBuilder<T> {
@@ -391,7 +507,7 @@ export function createProgram<T = string>(
 
       // Instead of trying to load/save here, we'll defer to execute()
       // This prevents duplicate saves and allows execute() to handle all persistence logic
-      return this;
+      return makeProgramCallable(this);
     },
 
     async save(name: string): Promise<ProgramBuilder<T>> {
@@ -419,25 +535,20 @@ export function createProgram<T = string>(
       await store.save('program', name, data);
 
       // Return this for chaining
-      return this;
+      return makeProgramCallable(this);
     }
   };
 
   // Options method is already added to the builder object
   
-  // Create a proxy to make the program builder directly callable
-  return new Proxy(builder, {
-    apply: async (target, _thisArg, args) => {
-      // When called as a function, build the program and then call it with the provided arguments
-      const func = await target.build({}, _executionOptions);
-      
-      // Call the generated function with the provided arguments
-      const result = func.apply(null, args);
-      
-      // If the result is a Promise, return it directly, otherwise wrap it in a Promise
-      return result instanceof Promise ? result : Promise.resolve(result);
-    }
-  }) as ProgramBuilder<T>;
+  // Store the execution options on the builder
+  (builder as any)._executionOptions = _executionOptions;
+  
+  // Make the builder callable
+  debug('program', 'Creating initial callable program builder');
+  const callableBuilder = makeProgramCallable(builder);
+  debug('program', 'Initial program builder is callable?', typeof callableBuilder === 'function');
+  return callableBuilder;
 }
 
 /**

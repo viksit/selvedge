@@ -187,6 +187,7 @@ export const selvedge: SelvedgeInstance = {
    * ```
    */
   program<T = string>(strings: TemplateStringsArray, ...values: any[]): ProgramBuilder<T> {
+    // The createProgram function now handles making the builder callable
     return createProgram<T>(strings, values);
   },
 
