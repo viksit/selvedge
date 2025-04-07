@@ -3,9 +3,9 @@
     "target": "ES2022",
     "types": [
       "node",
-      "commander"
+      "commander",
+      "bun-types"
     ],
-
     "module": "ESNext",
     "moduleResolution": "node",
     "lib": [
@@ -83,7 +83,8 @@
   },
   "include": [
     "src/**/*",
-    "types/**/*"
+    "types/**/*",
+    "bun-types"
   ],
   "exclude": [
     "node_modules",

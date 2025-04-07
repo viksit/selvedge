@@ -6,6 +6,7 @@
 import * as fsPromises from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
+import { debug } from './utils/debug';
 
 /**
  * Store class for managing versioned persistence
@@ -54,9 +55,19 @@ export class Store {
    */
   private async ensureDir(dirPath: string): Promise<void> {
     try {
+      // Make sure the base directory exists first
+      await fsPromises.mkdir(this.baseDir, { recursive: true });
+      
+      // Then create the requested directory
       await fsPromises.mkdir(dirPath, { recursive: true });
+      
+      // Verify the directory was created
+      await fsPromises.access(dirPath);
+      
+      debug('persistence', `Created/verified directory: ${dirPath}`);
     } catch (error: unknown) {
       const err = error as Error;
+      debug('persistence', `Error creating directory ${dirPath}: ${err.message}`);
       throw new Error(`Failed to create directory ${dirPath}: ${err.message}`);
     }
   }
@@ -76,7 +87,31 @@ export class Store {
     // Create directories if needed
     const typeDir = path.join(this.baseDir, type + 's');
     const itemDir = path.join(typeDir, name);
-    await this.ensureDir(itemDir);
+    
+    // Ensure base directory exists
+    try {
+      await fsPromises.mkdir(this.baseDir, { recursive: true });
+      debug('persistence', `Ensured base directory exists: ${this.baseDir}`);
+    } catch (error) {
+      debug('persistence', `Error creating base directory: ${(error as Error).message}`);
+    }
+    
+    // Ensure type directory exists
+    try {
+      await fsPromises.mkdir(typeDir, { recursive: true });
+      debug('persistence', `Ensured type directory exists: ${typeDir}`);
+    } catch (error) {
+      debug('persistence', `Error creating type directory: ${(error as Error).message}`);
+    }
+    
+    // Ensure item directory exists
+    try {
+      await fsPromises.mkdir(itemDir, { recursive: true });
+      debug('persistence', `Ensured item directory exists: ${itemDir}`);
+    } catch (error) {
+      debug('persistence', `Error creating item directory: ${(error as Error).message}`);
+      throw new Error(`Failed to create item directory ${itemDir}: ${(error as Error).message}`);
+    }
     
     // Generate version ID
     const versionId = this.generateId();

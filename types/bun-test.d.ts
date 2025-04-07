@@ -1,23 +1,23 @@
 /**
  * Type definitions for Bun's test functions
  */
-
+/// <reference types="bun-types" />
 declare global {
   /**
    * Defines a test suite
    */
   function describe(name: string, fn: () => void): void;
-  
+
   /**
    * Defines a test case
    */
   function it(name: string, fn: () => void | Promise<void>): void;
-  
+
   /**
    * Defines a test case (alias for it)
    */
   function test(name: string, fn: () => void | Promise<void>): void;
-  
+
   /**
    * Makes assertions about values
    */
@@ -42,7 +42,7 @@ declare global {
     function toMatchObject(expected: object): void;
     function toHaveLength(expected: number): void;
   }
-  
+
   interface Matchers<R> {
     toBeDefined(): R;
     toBeUndefined(): R;
@@ -65,11 +65,11 @@ declare global {
     toHaveLength(expected: number): R;
     not: Matchers<R>;
   }
-  
+
   function expect<T>(actual: T): Matchers<void>;
   namespace expect {
     const not: Matchers<void>;
   }
 }
 
-export {};
+export { };

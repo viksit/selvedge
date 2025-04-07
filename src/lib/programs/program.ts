@@ -159,7 +159,14 @@ export function makeProgramCallable<T>(builder: any): ProgramBuilder<T> {
     if (typeof originalMethod === 'function') {
       wrappedMethods[methodName] = function(...args: any[]) {
         const result = originalMethod.apply(builder, args);
-        // Always ensure the result is callable
+        
+        // For persist and save methods, return the proxy itself to maintain object identity
+        if (methodName === 'persist' || methodName === 'save') {
+          // The actual work is done inside the method, we just need to return the proxy
+          return proxy; // This will be defined later, but JavaScript hoisting makes it work
+        }
+        
+        // For other methods, always ensure the result is callable
         if (result && typeof result === 'object') {
           return makeProgramCallable(result);
         }
@@ -445,7 +452,7 @@ export function createProgram<T = string>(
 
       // Instead of trying to load/save here, we'll defer to execute()
       // This prevents duplicate saves and allows execute() to handle all persistence logic
-      return makeProgramCallable(this as unknown as ProgramBuilder<T>);
+      return this as unknown as ProgramBuilder<T>;
     },
 
     async save(name: string): Promise<ProgramBuilder<T>> {
@@ -473,7 +480,7 @@ export function createProgram<T = string>(
       await store.save('program', name, data);
 
       // Return this for chaining
-      return makeProgramCallable(this as unknown as ProgramBuilder<T>);
+      return this as unknown as ProgramBuilder<T>;
     }
   };
 

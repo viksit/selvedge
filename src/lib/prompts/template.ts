@@ -196,7 +196,13 @@ function makeTemplateCallable<T>(template: TemplateObject<T>): PromptTemplate<T>
         // Replace method with a wrapped version that ensures the return value is callable
         return function(...args: any[]) {
           const result = value.apply(target, args);
-          // If result is a template, ensure it's callable
+          
+          // Special handling for persist and save methods - they should return the original proxy
+          if (prop === 'persist' || prop === 'save') {
+            return proxy;
+          }
+          
+          // For other methods, if result is a template, ensure it's callable
           if (result && typeof result === 'object' && 'segments' in result) {
             return makeTemplateCallable(result as TemplateObject<any>);
           }
@@ -573,12 +579,12 @@ export function createTemplate<T = any>(
       // For testing purposes - this is checked in tests
       debug('prompt', `Prompt "${id}" has been persisted for later use`);
 
-      // Create a new template with the persist ID and needsSave flag set
-      const result = createTemplateFromBase<T>(this, {
-        persistId: id,
-        needsSave: true
-      });
-      return result;
+      // Set properties directly on this object instead of creating a new one
+      this.persistId = id;
+      this.needsSave = true;
+      
+      // Return the original proxy object for chaining
+      return this as unknown as PromptTemplate<T>;
     },
     
     async save(name: string): Promise<PromptTemplate<T>> {
@@ -591,8 +597,8 @@ export function createTemplate<T = any>(
       // Save to storage
       await store.save('prompt', name, data);
       
-      // Create a new template with the same properties to preserve the callable functionality
-      return createTemplateFromBase<T>(this, {});
+      // Return this for chaining instead of creating a new object
+      return this as unknown as PromptTemplate<T>;
     }
   };
   

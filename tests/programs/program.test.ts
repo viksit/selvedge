@@ -1,12 +1,36 @@
 /**
  * Tests for the program generation functionality
  */
-import { describe, it, expect, beforeEach } from 'bun:test';
+import { describe, it, expect, beforeEach, beforeAll } from 'bun:test';
 import { selvedge } from '../../src';
 import { ModelRegistry } from '@models';
-// Removed unused imports
+import * as fs from 'fs/promises';
+import * as path from 'path';
+import * as os from 'os';
+import { store } from '../../src/lib/storage';
 
 describe('Program Generation', () => {
+  // Ensure storage directories exist
+  beforeAll(async () => {
+    // Create necessary storage directories
+    const baseDir = store.getBasePath();
+    const programsDir = path.join(baseDir, 'programs');
+    const promptsDir = path.join(baseDir, 'prompts');
+    
+    try {
+      // Create base directory
+      await fs.mkdir(baseDir, { recursive: true });
+      // Create programs directory
+      await fs.mkdir(programsDir, { recursive: true });
+      // Create prompts directory
+      await fs.mkdir(promptsDir, { recursive: true });
+      
+      console.log(`Storage directories created: ${baseDir}`);
+    } catch (error) {
+      console.error(`Error creating storage directories: ${(error as Error).message}`);
+    }
+  });
+  
   beforeEach(() => {
     // Register a mock model for testing
     selvedge.models({
