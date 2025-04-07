@@ -4,8 +4,7 @@
 import { describe, it, expect, beforeEach } from 'bun:test';
 import { selvedge } from '../../src';
 import { ModelRegistry } from '@models';
-import { store } from '@storage';
-import { ModelProvider } from '@types';
+// Removed unused imports
 
 describe('Program Generation', () => {
   beforeEach(() => {

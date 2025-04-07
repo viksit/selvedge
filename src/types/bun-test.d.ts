@@ -30,6 +30,8 @@ declare module 'bun:test' {
     toBeCloseTo(expected: number, precision?: number): void;
     toMatch(expected: string | RegExp): void;
     toHaveProperty(property: string, value?: any): void;
+    rejects: ExpectResult; // For async rejection testing
+    resolves: ExpectResult; // For async resolution testing
     not: ExpectResult;
   }
 

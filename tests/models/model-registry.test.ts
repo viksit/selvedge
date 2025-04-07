@@ -88,8 +88,12 @@ describe('Model Registry', () => {
       const mock2Adapter = ModelRegistry.getAdapter(mock2Model);
       
       // Check adapter types
-      expect(mock1Adapter.constructor.name).toBe('MockModelAdapter');
-      expect(mock2Adapter.constructor.name).toBe('MockModelAdapter');
+      expect(mock1Adapter).toBeDefined();
+      expect(mock2Adapter).toBeDefined();
+      if (mock1Adapter && mock2Adapter) {
+        expect(mock1Adapter.constructor.name).toBe('MockModelAdapter');
+        expect(mock2Adapter.constructor.name).toBe('MockModelAdapter');
+      }
     }
   });
 });

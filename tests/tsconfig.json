@@ -1,0 +1,15 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "noImplicitAny": false,
+    "strictNullChecks": false,
+    "types": ["node", "commander"],
+    "typeRoots": [
+      "../node_modules/@types",
+      "../src/types"
+    ]
+  },
+  "include": [
+    "./**/*.ts"
+  ]
+}
