@@ -150,10 +150,10 @@ describe('Flow System', () => {
           ctx.metadata.step1 = true;
           return num * 2;
         },
-        (num, ctx) => {
+        (_num, _ctx) => {
           throw new Error('Context test error');
         },
-        (num, ctx) => `Result: ${num}`
+        (num, _ctx) => `Result: ${num}`
       );
 
       // Execute the flow and expect an error
@@ -173,7 +173,7 @@ describe('Flow System', () => {
           ctx.metadata.step1 = true;
           return num * 2;
         },
-        (num, ctx) => `Result: ${num}`
+        (num, _ctx) => `Result: ${num}`
       )
         .describe('Test context flow')
         .tag('context', 'test');
@@ -419,13 +419,13 @@ describe('Flow System', () => {
 
         // Filter values
         (data) => {
-          const filtered = data.values.filter(val => val > data.threshold);
+          const filtered = data.values.filter((val: number) => val > data.threshold);
           return { ...data, filtered };
         },
 
         // Calculate statistics
         (data) => {
-          const sum = data.filtered.reduce((acc, val) => acc + val, 0);
+          const sum = data.filtered.reduce((acc: number, val: number) => acc + val, 0);
           const average = data.filtered.length > 0 ? sum / data.filtered.length : 0;
           
           return {
@@ -492,7 +492,7 @@ describe('Flow System', () => {
           if (!ctx.metadata) ctx.metadata = {};
           if (!ctx.metadata.processingSteps) ctx.metadata.processingSteps = [];
           ctx.metadata.processingSteps.push('filter');
-          const filtered = data.tokens.filter(token => token.length > 3);
+          const filtered = data.tokens.filter((token: string) => token.length > 3);
           return { ...data, filtered };
         },
 

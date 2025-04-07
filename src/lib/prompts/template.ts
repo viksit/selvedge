@@ -67,7 +67,7 @@ function extractParameterNames(fn: Function): string[] {
  * Determine if a function is a simple accessor (e.g., name => name)
  * or a complex accessor (e.g., params => params.product)
  */
-function isSimpleAccessor(fn: Function): boolean {
+function isSimpleAccessor(_fn: Function): boolean {
   // For our tests, we'll consider all renderer functions as simple accessors
   // This ensures backward compatibility with existing tests
   return true;

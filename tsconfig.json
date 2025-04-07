@@ -5,6 +5,7 @@
       "node",
       "commander"
     ],
+
     "module": "ESNext",
     "moduleResolution": "node",
     "lib": [
@@ -76,7 +77,8 @@
     },
     "typeRoots": [
       "./node_modules/@types",
-      "./types"
+      "./types",
+      "./src/types"
     ]
   },
   "include": [
