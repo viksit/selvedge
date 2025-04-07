@@ -43,7 +43,7 @@ describe('Prompt Template System', () => {
   });
   
   it('should handle multiple variables', () => {
-    const template = selvedge.prompt`${greeting => greeting}, ${name => name}! How are you ${time => time}?`;
+    const template = selvedge.prompt`${(greeting: string) => greeting}, ${(name: string) => name}! How are you ${(time: string) => time}?`;
     expect(template.render({ 
       greeting: 'Hello',
       name: 'Bob',

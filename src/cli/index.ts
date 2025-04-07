@@ -2,6 +2,7 @@
 /**
  * Selvedge CLI - Command line interface for managing stored prompts and programs
  */
+/// <reference types="commander" />
 import { manager, selvedge } from '../';
 import { program } from 'commander';
 
@@ -32,7 +33,7 @@ program
       if (options.verbose) {
         // Show detailed information with metadata
         const items = await manager.listAllItems();
-        
+
         if (!options.programs) {
           // Show prompts
           const prompts = items.filter(item => item.type === 'prompt');
@@ -57,7 +58,7 @@ program
             console.log('No prompts found');
           }
         }
-        
+
         if (!options.prompts) {
           // Show programs
           const programs = items.filter(item => item.type === 'program');
@@ -93,7 +94,7 @@ program
             console.log('No prompts found');
           }
         }
-        
+
         if (!options.prompts) {
           const programs = await selvedge.listPrograms();
           console.log('\nPrograms:');
@@ -120,11 +121,11 @@ program
         console.error('Type must be either "prompt" or "program"');
         process.exit(1);
       }
-      
-      const versions = type === 'prompt' 
+
+      const versions = type === 'prompt'
         ? await selvedge.listPromptVersions(name)
         : await selvedge.listProgramVersions(name);
-      
+
       console.log(`\nVersions of ${type} "${name}":`);
       if (versions.length > 0) {
         versions.forEach((version, index) => {
@@ -153,17 +154,17 @@ program
         console.error('Type must be either "prompt" or "program"');
         process.exit(1);
       }
-      
+
       const info = await manager.getItemInfo(type, name);
-      
+
       console.log(`\nInformation for ${type} "${name}":`);
       console.log(`Versions: ${info.versions.length}`);
       console.log(`Used: ${info.metadata.useCount || 0} times`);
-      
+
       if (info.metadata.lastUsed) {
         console.log(`Last used: ${new Date(info.metadata.lastUsed).toLocaleString()}`);
       }
-      
+
       if (info.metadata.performance) {
         console.log('\nPerformance:');
         if (info.metadata.performance.avgExecutionTime !== undefined) {
@@ -173,15 +174,15 @@ program
           console.log(`  Success rate: ${(info.metadata.performance.successRate * 100).toFixed(2)}%`);
         }
       }
-      
+
       if (info.metadata.tags && info.metadata.tags.length > 0) {
         console.log(`\nTags: ${info.metadata.tags.join(', ')}`);
       }
-      
+
       if (info.metadata.description) {
         console.log(`\nDescription: ${info.metadata.description}`);
       }
-      
+
       console.log('\nVersions:');
       info.versions.forEach((version, index) => {
         if (index === 0) {
@@ -208,19 +209,19 @@ program
         console.error('Type must be either "prompt" or "program"');
         process.exit(1);
       }
-      
+
       if (options.add) {
         const tags = options.add.split(',').map((tag: string) => tag.trim());
         await manager.addTags(type, name, tags);
         console.log(`Added tags to ${type} "${name}": ${tags.join(', ')}`);
       }
-      
+
       if (options.remove) {
         const tags = options.remove.split(',').map((tag: string) => tag.trim());
         await manager.removeTags(type, name, tags);
         console.log(`Removed tags from ${type} "${name}": ${tags.join(', ')}`);
       }
-      
+
       // Show current tags
       const info = await manager.getItemInfo(type, name);
       if (info.metadata.tags && info.metadata.tags.length > 0) {
@@ -244,7 +245,7 @@ program
         console.error('Type must be either "prompt" or "program"');
         process.exit(1);
       }
-      
+
       await manager.setDescription(type, name, description);
       console.log(`Set description for ${type} "${name}"`);
     } catch (error) {
@@ -263,12 +264,12 @@ program
         console.error('Type must be either "prompt" or "program"');
         process.exit(1);
       }
-      
+
       const comparison = await manager.compareVersions(type, name, version1, version2);
-      
+
       console.log(`\nComparison of ${type} "${name}" versions:`);
       console.log(`- ${comparison.oldVersion} → ${comparison.newVersion}`);
-      
+
       if (comparison.differences.structural && comparison.differences.structural.length > 0) {
         console.log('\nStructural differences:');
         comparison.differences.structural.forEach(diff => {
@@ -277,14 +278,14 @@ program
       } else {
         console.log('\nNo structural differences found');
       }
-      
+
       if (comparison.differences.metadata && comparison.differences.metadata.length > 0) {
         console.log('\nMetadata differences:');
         comparison.differences.metadata.forEach(diff => {
           console.log(`- ${diff}`);
         });
       }
-      
+
       if (comparison.differences.performance) {
         console.log('\nPerformance differences:');
         if (comparison.differences.performance.executionTime !== undefined) {
@@ -315,10 +316,10 @@ program
         console.error('Type must be either "prompt" or "program"');
         process.exit(1);
       }
-      
+
       // Default output path if not provided
       const outputPath = output || `./${name}-${type}-export.json`;
-      
+
       await manager.exportItem(type, name, outputPath, options.version);
       console.log(`Exported ${type} "${name}" to ${outputPath}`);
     } catch (error) {

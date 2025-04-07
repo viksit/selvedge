@@ -33,8 +33,19 @@ async function runTests() {
   // Create test directory
   await fs.mkdir(testDir, { recursive: true });
   
-  // Override store path for testing
-  (store as any).baseDir = testDir;
+  // Create programs and prompts subdirectories
+  await fs.mkdir(path.join(testDir, 'programs'), { recursive: true });
+  await fs.mkdir(path.join(testDir, 'prompts'), { recursive: true });
+  
+  // Override store path for testing using the new method
+  store.setBasePath(testDir);
+  
+  // Verify directories exist
+  const programsExist = await fs.access(path.join(testDir, 'programs')).then(() => true).catch(() => false);
+  const promptsExist = await fs.access(path.join(testDir, 'prompts')).then(() => true).catch(() => false);
+  
+  console.log(`Test directories created: programs=${programsExist}, prompts=${promptsExist}`);
+  
   
   try {
     await testPromptSave();
@@ -47,7 +58,7 @@ async function runTests() {
     console.error('\nTest failed:', error);
   } finally {
     // Restore original store path
-    (store as any).baseDir = originalStore;
+    store.setBasePath(originalStore);
     
     // Clean up test directory
     try {

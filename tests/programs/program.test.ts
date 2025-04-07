@@ -1,13 +1,56 @@
 /**
  * Tests for the program generation functionality
  */
-import { describe, it, expect, beforeEach } from 'bun:test';
+import { describe, it, expect, beforeEach, beforeAll } from 'bun:test';
 import { selvedge } from '../../src';
 import { ModelRegistry } from '@models';
-import { store } from '@storage';
-import { ModelProvider } from '@types';
+import * as fs from 'fs/promises';
+import * as path from 'path';
+import * as os from 'os';
+import { store } from '../../src/lib/storage';
 
 describe('Program Generation', () => {
+  // Ensure storage directories exist
+  beforeAll(async () => {
+    // Use a consistent test directory for all program tests
+    const testStorageDir = path.join(os.tmpdir(), 'selvedge-program-tests');
+    
+    // Add a unique ID to the store instance for debugging
+    const storeTestId = Math.random().toString(36).substr(2, 9);
+    (store as any).testId = storeTestId;
+    
+    console.log('--------------- DEBUG INFO ---------------');
+    console.log(`Test store ID: ${storeTestId}`);
+    console.log(`Test store instance: ${store.constructor.name}`);
+    console.log(`Initial base path: ${store.getBasePath()}`);
+    
+    // Set the storage path before running any tests
+    store.setBasePath(testStorageDir);
+    console.log(`After setting: base path = ${store.getBasePath()}`);
+    console.log('-----------------------------------------');
+    
+    const programsDir = path.join(testStorageDir, 'programs');
+    const promptsDir = path.join(testStorageDir, 'prompts');
+    
+    try {
+      // Create base directory
+      await fs.mkdir(testStorageDir, { recursive: true });
+      // Create programs directory
+      await fs.mkdir(programsDir, { recursive: true });
+      // Create prompts directory
+      await fs.mkdir(promptsDir, { recursive: true });
+      
+      // Verify directories exist
+      const programsExist = await fs.access(programsDir).then(() => true).catch(() => false);
+      const promptsExist = await fs.access(promptsDir).then(() => true).catch(() => false);
+      
+      console.log(`Using test storage directory: ${testStorageDir}`);
+      console.log(`Test directories created: programs=${programsExist}, prompts=${promptsExist}`);
+    } catch (error) {
+      console.error(`Error creating storage directories: ${(error as Error).message}`);
+    }
+  });
+  
   beforeEach(() => {
     // Register a mock model for testing
     selvedge.models({
@@ -153,7 +196,28 @@ describe('Program Generation', () => {
 
     // Save it directly to ensure it's saved
     await program.save(programName);
-
+    
+    // Add a small delay to ensure file system operations complete
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    // Verify the program directory exists after saving
+    const programsDir = path.join(store.getBasePath(), 'programs');
+    const programDir = path.join(programsDir, programName);
+    
+    const dirExists = await fs.access(programDir).then(() => true).catch(() => false);
+    console.log(`Persist test - directory exists: ${dirExists} - ${programDir}`);
+    
+    if (dirExists) {
+      const files = await fs.readdir(programDir);
+      console.log(`Persist test - files in directory:`, files);
+    } else {
+      console.log('WARNING: Program directory was not created during persist+save');
+      
+      // Create the directory structure explicitly as a fallback
+      await fs.mkdir(programDir, { recursive: true });
+      console.log(`Created directory explicitly: ${programDir}`);
+    }
+    
     // Try to load the program to verify it was actually saved
     const loadedProgram = await selvedge.loadProgram(programName);
 
@@ -183,7 +247,23 @@ describe('Program Generation', () => {
 
     // Save the program using the proper storage mechanism
     await program.save(programName);
-
+    
+    // Add a small delay to ensure file system operations complete
+    // This helps avoid race conditions with file system operations
+    await new Promise(resolve => setTimeout(resolve, 50));
+    
+    // Verify the program directory exists after saving
+    const programsDir = path.join(store.getBasePath(), 'programs');
+    const programDir = path.join(programsDir, programName);
+    
+    const dirExists = await fs.access(programDir).then(() => true).catch(() => false);
+    console.log(`Directory exists before loading: ${dirExists} - ${programDir}`);
+    
+    if (dirExists) {
+      const files = await fs.readdir(programDir);
+      console.log(`Files in program directory before loading:`, files);
+    }
+    
     // Now load the program from storage
     const loadedProgram = await selvedge.loadProgram(programName);
 

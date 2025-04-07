@@ -3,10 +3,8 @@
  */
 import { ModelRegistry } from './models';
 import { ModelProvider, SelvedgeInstance, ModelDefinition } from './types';
-import { createTemplate } from './prompts/template';
-import { PromptTemplate } from './prompts/types';
-import { createProgram } from './programs/program';
-import { ProgramBuilder } from './programs/types';
+import { createTemplate, PromptTemplate } from './prompts';
+import { createProgram, ProgramBuilder } from './programs';
 import { store } from './storage';
 import { flow as createFlow } from './flow';
 import { enableDebug, enableNamespace, parseDebugString } from './utils/debug';
@@ -189,6 +187,7 @@ export const selvedge: SelvedgeInstance = {
    * ```
    */
   program<T = string>(strings: TemplateStringsArray, ...values: any[]): ProgramBuilder<T> {
+    // The createProgram function now handles making the builder callable
     return createProgram<T>(strings, values);
   },
 
@@ -232,6 +231,14 @@ export const selvedge: SelvedgeInstance = {
    * ```
    */
   async loadProgram<T = string>(name: string, version?: string): Promise<ProgramBuilder<T>> {
+    // Debug store instance
+    console.log('--------------- LOAD PROGRAM DEBUG ---------------');
+    console.log(`Load store ID: ${(store as any).testId || 'undefined'}`);
+    console.log(`Load store instance: ${store.constructor.name}`);
+    console.log(`Load base path: ${store.getBasePath()}`);
+    console.log(`Loading program: ${name}`);
+    console.log('---------------------------------------------------');
+    
     // Load the program data from storage
     const data = await store.load('program', name, version);
     
@@ -261,7 +268,7 @@ export const selvedge: SelvedgeInstance = {
       }
     }
     
-    return builder;
+    return builder as ProgramBuilder<T>;
   },
   
   /**
