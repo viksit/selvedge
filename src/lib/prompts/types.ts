@@ -83,6 +83,12 @@ export interface PromptTemplate<T = any> {
   /** List of variables used in this template */
   variables: PromptVariable[];
   
+  /** ID used for persistence, if this prompt has been persisted */
+  persistId?: string;
+  
+  /** Flag to track if the prompt needs to be saved */
+  needsSave?: boolean;
+  
   /** Fill template with variables and return the rendered string */
   render: (variables: PromptVariables) => string;
   
@@ -109,6 +115,9 @@ export interface PromptTemplate<T = any> {
   
   /** Specify the model to use for this prompt */
   using: (model: string | import('../types').ModelDefinition) => PromptTemplate<T>;
+  
+  /** Save this prompt for later use (legacy method) */
+  persist: (id: string) => PromptTemplate<T>;
   
   /** 
    * Save this prompt template with versioning
