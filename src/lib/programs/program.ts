@@ -132,23 +132,13 @@ function createFunctionProxy(code: string): any {
  * Helper function to create a callable proxy around a program builder
  */
 export function makeProgramCallable<T>(builder: any): ProgramBuilder<T> {
-  debug('program', 'makeProgramCallable called');
-  debug('program', 'Builder props:', Object.getOwnPropertyNames(builder));
-  
   // Check if the builder is already callable
-  const isCallable = typeof builder === 'function';
-  debug('program', 'Already callable?', isCallable);
-  
   if (builder[CALLABLE_MARKER]) {
-    debug('program', 'Builder is already marked as callable, returning');
     return builder as ProgramBuilder<T>;
   }
   
-  debug('program', 'Creating proxy wrapper with function target');
-  
   // Create a base function that will be our callable builder
   const baseFunction = async function(...args: any[]) {
-    debug('program', 'Program function called with args:', args);
     // When called as a function, build the program and then call it with the provided arguments
     const func = await builder.build({}, builder._executionOptions || {});
     
@@ -167,16 +157,11 @@ export function makeProgramCallable<T>(builder: any): ProgramBuilder<T> {
   methodsThatReturnBuilder.forEach(methodName => {
     const originalMethod = builder[methodName];
     if (typeof originalMethod === 'function') {
-      debug('program', `Pre-wrapping method: ${methodName}`);
       wrappedMethods[methodName] = function(...args: any[]) {
-        debug('program', `Calling pre-wrapped method: ${methodName}`);
         const result = originalMethod.apply(builder, args);
         // Always ensure the result is callable
         if (result && typeof result === 'object') {
-          debug('program', `Making result from ${methodName} callable`);
-          const callableResult = makeProgramCallable(result);
-          debug('program', `Result from ${methodName} callable? ${typeof callableResult === 'function'}`);
-          return callableResult;
+          return makeProgramCallable(result);
         }
         return result;
       };
@@ -197,35 +182,19 @@ export function makeProgramCallable<T>(builder: any): ProgramBuilder<T> {
   // Mark as callable
   (baseFunction as any)[CALLABLE_MARKER] = true;
   
-  debug('program', 'Base is callable?', typeof baseFunction === 'function');
-  
   // Create the proxy
   const proxy = new Proxy(baseFunction, {
     apply: (target, thisArg, args) => {
-      debug('program', 'Proxy apply trap called');
       return target.apply(thisArg, args);
     },
     get: (target, prop, receiver) => {
       // Get the property
-      debug('program', `Proxy get trap called for property: ${String(prop)}`);
       const value = Reflect.get(target, prop, receiver);
-      
-      // Log property type
-      debug('program', `Property type: ${typeof value}`);
       
       // Return the value - methods are already wrapped
       return value;
     }
   }) as ProgramBuilder<T>;
-  
-  debug('program', 'Final proxy is callable?', typeof proxy === 'function');
-  debug('program', 'Final proxy has callable returns()?', typeof proxy.returns === 'function');
-  
-  // Test if returns() maintains callability
-  const returnsMethod = proxy.returns;
-  if (typeof returnsMethod === 'function') {
-    debug('program', 'Testing if returns() maintains callable status');
-  }
   
   return proxy;
 }
@@ -377,16 +346,9 @@ export function createProgram<T = string>(
       // Cache the generated code
       this.generatedCode = String(codeResponse);
       
-      // Log detailed information about the generated code
-      debug('program', "Generated code from LLM:");
-      debug('program', "```javascript");
-      debug('program', String(codeResponse).split('\n').map(line => `  ${line}`).join('\n'));
-      debug('program', "```");
-      
-      // Log code size metrics
+      // Log basic information about the generated code
       const codeLines = String(codeResponse).split('\n').length;
-      const codeChars = String(codeResponse).length;
-      debug('program', `Code metrics: ${codeLines} lines, ${codeChars} characters`);
+      debug('program', `Generated code: ${codeLines} lines`);
 
       return codeResponse as unknown as T;
     },
@@ -414,13 +376,7 @@ export function createProgram<T = string>(
         // If we already have generated code and aren't forcing regeneration, use it directly
         if (this.generatedCode && !options.forceRegenerate) {
           debug('program', "Using existing generated code - no LLM call needed");
-          debug('program', "Using cached code to create function proxy");
-          debug('program', "Cached code:");
-          debug('program', "```javascript");
-          debug('program', String(this.generatedCode).split('\n').map(line => `  ${line}`).join('\n'));
-          debug('program', "```");
           const proxy = createFunctionProxy(String(this.generatedCode));
-          debug('program', "Function proxy created successfully from cached code");
           return proxy;
         }
 
@@ -429,20 +385,14 @@ export function createProgram<T = string>(
           debug('program', "forceRegenerate option is true - regenerating code");
           this.needsSave = true; // Need to save if we're forcing regeneration
         } else if (!this.generatedCode) {
-          debug('program', "No cached code found in execute() - generating for the first time");
+          debug('program', "No cached code found - generating for the first time");
           this.needsSave = true; // Need to save if we're generating for the first time
         }
         
-        // Debug the model and execution options
+        // Debug the model information
         const modelProvider = this.modelDef.provider;
         const modelName = this.modelDef.model;
         debug('program', `Using model: ${modelProvider}/${modelName}`);
-        debug('program', `Execution options: ${JSON.stringify(options, null, 2)}`);
-        debug('program', `Variables: ${JSON.stringify(variables, null, 2)}`);
-        debug('program', `Examples count: ${this.exampleList.length}`);
-        if (this.exampleList.length > 0) {
-          debug('program', `First example: ${JSON.stringify(this.exampleList[0], null, 2)}`);
-        }
 
         // Generate the code
         const code = await this.generate(variables, options);
@@ -450,22 +400,11 @@ export function createProgram<T = string>(
         // Store the generated code for future use
         this.generatedCode = String(code);
         
-        // Log the generated code in a nicely formatted way
-        debug('program', "Generated code:");
-        debug('program', "```javascript");
-        debug('program', String(code).split('\n').map(line => `  ${line}`).join('\n'));
-        debug('program', "```");
-        
         // Try to extract function name for better logging
         const functionNameMatch = String(code).match(/function\s+([a-zA-Z0-9_]+)/);
         const functionName = functionNameMatch ? functionNameMatch[1] : 'anonymous';
         debug('program', `Generated function: ${functionName}`);
         
-        // Log code size metrics
-        const codeLines = String(code).split('\n').length;
-        const codeChars = String(code).length;
-        debug('program', `Code metrics: ${codeLines} lines, ${codeChars} characters`);
-
         // Save the generated code if we have a persist ID and need to save
         if (this.persistId && this.needsSave) {
           debug('persistence', `Saving program "${this.persistId}" to storage`);
@@ -476,10 +415,7 @@ export function createProgram<T = string>(
           this.needsSave = false;
         }
 
-        // Log function creation
-        debug('program', "Creating function proxy from generated code");
         const proxy = createFunctionProxy(String(code));
-        debug('program', "Function proxy created successfully");
         return proxy;
       } catch (error) {
         debug('program', "Error executing program:", error);
@@ -545,9 +481,7 @@ export function createProgram<T = string>(
   (builder as any)._executionOptions = _executionOptions;
   
   // Make the builder callable
-  debug('program', 'Creating initial callable program builder');
   const callableBuilder = makeProgramCallable(builder);
-  debug('program', 'Initial program builder is callable?', typeof callableBuilder === 'function');
   return callableBuilder;
 }
 
