@@ -151,47 +151,89 @@ interface TemplateObject<T> {
  * Helper function to create a callable proxy around a template object
  */
 function makeTemplateCallable<T>(template: TemplateObject<T>): PromptTemplate<T> {
+  console.log('DEBUG - makeTemplateCallable called');
+  console.log('DEBUG - Template is:', Object.getOwnPropertyNames(template));
+  console.log('DEBUG - Template has methods:', 
+    'returns' in template, 
+    'using' in template, 
+    'options' in template, 
+    'persist' in template);
+  console.log('DEBUG - Already callable?', !!template[CALLABLE_MARKER]);
+
   // If this template is already callable (has our proxy), return it as is
   if (template[CALLABLE_MARKER]) {
+    console.log('DEBUG - Template already callable, returning as is');
     return template as unknown as PromptTemplate<T>;
   }
   
-  // Mark the template as callable to prevent double-wrapping
-  template[CALLABLE_MARKER] = true;
+  // Create a function that will be our new template base
+  // This is crucial - we need the target to be a function for the proxy to be callable
+  const baseFunction = function(...args: any[]) {
+    console.log('DEBUG - Template function called with args:', args.length);
+    const [variables = {}, options = {}] = args;
+    const mergedOptions = { ...(template._executionOptions || {}), ...options };
+    return template.execute(variables, mergedOptions);
+  };
   
-  return new Proxy(template, {
-    // Handler for function calls (e.g., template({...}))
-    apply: (_target, _thisArg, args) => {
-      // When called as a function, execute the prompt with the provided arguments
-      const [variables = {}, options = {}] = args;
-      // Merge stored options with call-time options
-      const mergedOptions = { ...(template._executionOptions || {}), ...options };
-      return template.execute(variables, mergedOptions);
+  // Copy all properties from the template object to our function
+  // This way the function has all the same methods and properties
+  Object.getOwnPropertyNames(template).forEach(prop => {
+    if (prop !== 'constructor') {
+      (baseFunction as any)[prop] = (template as any)[prop];
+    }
+  });
+  
+  // Copy symbols too (like our CALLABLE_MARKER)
+  (baseFunction as any)[CALLABLE_MARKER] = true;
+  
+  console.log('DEBUG - Creating proxy wrapper with function target');
+  console.log('DEBUG - Base is callable?', typeof baseFunction === 'function');
+  
+  // Now we create a proxy with a function target
+  const proxy = new Proxy(baseFunction, {
+    // apply trap will be called when the proxy is invoked as a function
+    apply: (target, thisArg, args) => {
+      console.log('DEBUG - Proxy apply trap called');
+      // Just call our target function which handles execution
+      return target.apply(thisArg, args);
     },
-    // Handler for property access (e.g., template.render)
+    
+    // get trap for property/method access
     get: (target, prop, receiver) => {
+      console.log(`DEBUG - Proxy get trap called for property: ${String(prop)}`);
       // Get the property from the target
       const value = Reflect.get(target, prop, receiver);
+      
+      console.log(`DEBUG - Property type:`, typeof value);
       
       // If the property is a method that returns a PromptTemplate, ensure the result is callable
       if (typeof value === 'function' && 
           prop !== 'execute' && 
           prop !== 'render' && 
           prop !== 'formatResponse') {
+        console.log(`DEBUG - Wrapping method: ${String(prop)}`);
         // Replace method with a wrapped version that ensures the return value is callable
         return function(...args: any[]) {
+          console.log(`DEBUG - Calling wrapped method: ${String(prop)}`);
           const result = value.apply(target, args);
+          console.log(`DEBUG - Method ${String(prop)} returned:`, result ? Object.getOwnPropertyNames(result) : result);
           // If result is a template, ensure it's callable
           if (result && typeof result === 'object' && 'segments' in result) {
+            console.log(`DEBUG - Result is a template, making it callable`);
             return makeTemplateCallable(result as TemplateObject<any>);
           }
+          console.log(`DEBUG - Returning raw result from ${String(prop)}`);
           return result;
         };
       }
       
+      console.log(`DEBUG - Returning raw property: ${String(prop)}`);
       return value;
     }
-  }) as PromptTemplate<T>;
+  }) as unknown as PromptTemplate<T>;
+  
+  console.log('DEBUG - Final proxy is callable?', typeof proxy === 'function');
+  return proxy;
 }
 
 /**
@@ -455,11 +497,13 @@ export function createTemplate<T = any>(
     },
     
     returns<R>(schema?: z.ZodType<R>): PromptTemplate<R> {
+      console.log('DEBUG - returns() method called');
       // If no schema is provided, try to infer one from the type parameter
       const zodSchema = schema || inferSchema<R>();
       
       // Generate an example from the schema
       const example = generateJsonExampleFromSchema(zodSchema);
+      console.log('DEBUG - returns() generated example:', example);
       
       // Create a new template with the example format appended
       const enhancedTemplate = this.clone();
@@ -471,6 +515,7 @@ export function createTemplate<T = any>(
       }
       
       // Create a new template with the enhanced prompt and response handling
+      console.log('DEBUG - returns() calling createTemplateFromBase');
       return createTemplateFromBase<R>(enhancedTemplate, {
         formatResponse: (response: string): R => {
           const extractedJson = extractJsonFromString(response);
@@ -532,9 +577,11 @@ export function createTemplate<T = any>(
     },
     
     using(model: string | ModelDefinition): PromptTemplate<T> {
+      console.log('DEBUG - using() method called with:', model);
       // Create a new template with the specified model
       const self = this;
-      return createTemplateFromBase<T>(this, {
+      console.log('DEBUG - using() calling createTemplateFromBase');
+      const result = createTemplateFromBase<T>(this, {
         execute: async function<R = T>(
           variables: PromptVariables,
           options: PromptExecutionOptions = {}
@@ -549,17 +596,23 @@ export function createTemplate<T = any>(
           return self.execute<R>(variables, newOptions);
         }
       });
+      console.log('DEBUG - using() result callable?', typeof result === 'function');
+      return result;
     },
     
     persist(id: string): PromptTemplate<T> {
+      console.log('DEBUG - persist() method called with id:', id);
       // For testing purposes - this is checked in tests
       debug('prompt', `Prompt "${id}" has been persisted for later use`);
 
       // Create a new template with the persist ID and needsSave flag set
-      return createTemplateFromBase<T>(this, {
+      console.log('DEBUG - persist() calling createTemplateFromBase');
+      const result = createTemplateFromBase<T>(this, {
         persistId: id,
         needsSave: true
       });
+      console.log('DEBUG - persist() result callable?', typeof result === 'function');
+      return result;
     },
     
     async save(name: string): Promise<PromptTemplate<T>> {
