@@ -1,7 +1,7 @@
 {
   "name": "selvedge",
-  "version": "0.1.0",
-  "description": "Weaving prompts and code into structured, resilient patterns that won't unravel under pressure",
+  "version": "0.0.2",
+  "description": "A new way to think about creating robust, type-safe interactions with Large Language Models (LLMs). Prompt optimization and program generation.",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
