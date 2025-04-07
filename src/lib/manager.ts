@@ -6,8 +6,8 @@
  */
 import { store } from './storage';
 import { selvedge } from './core';
-import { ProgramBuilder } from './programs/types';
-import { PromptTemplate } from './prompts/types';
+import { ProgramBuilder } from './programs';
+import { PromptTemplate } from './prompts';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 

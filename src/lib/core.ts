@@ -3,10 +3,8 @@
  */
 import { ModelRegistry } from './models';
 import { ModelProvider, SelvedgeInstance, ModelDefinition } from './types';
-import { createTemplate } from './prompts/template';
-import { PromptTemplate } from './prompts/types';
-import { createProgram } from './programs/program';
-import { ProgramBuilder } from './programs/types';
+import { createTemplate, PromptTemplate } from './prompts';
+import { createProgram, ProgramBuilder } from './programs';
 import { store } from './storage';
 import { flow as createFlow } from './flow';
 import { enableDebug, enableNamespace, parseDebugString } from './utils/debug';
