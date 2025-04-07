@@ -234,12 +234,12 @@ export function createProgram<T = string>(
       _executionOptions = { ..._executionOptions, ...opts };
       // Store the options on the object as well, so they're preserved in clones
       (this as any)._executionOptions = _executionOptions;
-      return makeProgramCallable(this);
+      return makeProgramCallable(this as unknown as ProgramBuilder<T>);
     },
 
     withExamples(newExamples: ProgramExample[]): ProgramBuilder<T> {
       // Create a new builder with the updated examples
-      const newBuilder = { ...this };
+      const newBuilder = { ...this } as unknown as ProgramBuilder<T>;
       newBuilder.exampleList = [...exampleList, ...newExamples];
       return makeProgramCallable(newBuilder);
     },
@@ -258,7 +258,7 @@ export function createProgram<T = string>(
 
     using(model: ModelDefinition | string): ProgramBuilder<T> {
       // Create a new builder with the updated model
-      const newBuilder = { ...this };
+      const newBuilder = { ...this } as unknown as ProgramBuilder<T>;
 
       if (typeof model === 'string') {
         // Try to find model by alias
@@ -443,7 +443,7 @@ export function createProgram<T = string>(
 
       // Instead of trying to load/save here, we'll defer to execute()
       // This prevents duplicate saves and allows execute() to handle all persistence logic
-      return makeProgramCallable(this);
+      return makeProgramCallable(this as unknown as ProgramBuilder<T>);
     },
 
     async save(name: string): Promise<ProgramBuilder<T>> {
@@ -471,7 +471,7 @@ export function createProgram<T = string>(
       await store.save('program', name, data);
 
       // Return this for chaining
-      return makeProgramCallable(this);
+      return makeProgramCallable(this as unknown as ProgramBuilder<T>);
     }
   };
 
@@ -481,7 +481,7 @@ export function createProgram<T = string>(
   (builder as any)._executionOptions = _executionOptions;
   
   // Make the builder callable
-  const callableBuilder = makeProgramCallable(builder);
+  const callableBuilder = makeProgramCallable(builder as unknown as ProgramBuilder<T>);
   return callableBuilder;
 }
 

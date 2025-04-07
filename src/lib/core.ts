@@ -260,7 +260,7 @@ export const selvedge: SelvedgeInstance = {
       }
     }
     
-    return builder;
+    return builder as ProgramBuilder<T>;
   },
   
   /**

@@ -472,13 +472,11 @@ export function createTemplate<T = any>(
     },
     
     returns<R>(schema?: z.ZodType<R>): PromptTemplate<R> {
-      console.log('DEBUG - returns() method called');
       // If no schema is provided, try to infer one from the type parameter
       const zodSchema = schema || inferSchema<R>();
       
       // Generate an example from the schema
       const example = generateJsonExampleFromSchema(zodSchema);
-      console.log('DEBUG - returns() generated example:', example);
       
       // Create a new template with the example format appended
       const enhancedTemplate = this.clone();
@@ -490,7 +488,6 @@ export function createTemplate<T = any>(
       }
       
       // Create a new template with the enhanced prompt and response handling
-      console.log('DEBUG - returns() calling createTemplateFromBase');
       return createTemplateFromBase<R>(enhancedTemplate, {
         formatResponse: (response: string): R => {
           const extractedJson = extractJsonFromString(response);
@@ -552,10 +549,8 @@ export function createTemplate<T = any>(
     },
     
     using(model: string | ModelDefinition): PromptTemplate<T> {
-      console.log('DEBUG - using() method called with:', model);
       // Create a new template with the specified model
       const self = this;
-      console.log('DEBUG - using() calling createTemplateFromBase');
       const result = createTemplateFromBase<T>(this, {
         execute: async function<R = T>(
           variables: PromptVariables,
@@ -571,22 +566,18 @@ export function createTemplate<T = any>(
           return self.execute<R>(variables, newOptions);
         }
       });
-      console.log('DEBUG - using() result callable?', typeof result === 'function');
       return result;
     },
     
     persist(id: string): PromptTemplate<T> {
-      console.log('DEBUG - persist() method called with id:', id);
       // For testing purposes - this is checked in tests
       debug('prompt', `Prompt "${id}" has been persisted for later use`);
 
       // Create a new template with the persist ID and needsSave flag set
-      console.log('DEBUG - persist() calling createTemplateFromBase');
       const result = createTemplateFromBase<T>(this, {
         persistId: id,
         needsSave: true
       });
-      console.log('DEBUG - persist() result callable?', typeof result === 'function');
       return result;
     },
     
