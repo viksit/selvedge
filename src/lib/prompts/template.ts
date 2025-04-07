@@ -6,7 +6,7 @@ import { ModelRegistry } from '../models';
 import { ModelDefinition, ModelProvider } from '../types';
 import { store } from '../storage';
 import * as z from 'zod';
-import { inferSchema, generateJsonExampleFromSchema, validateWithSchema } from '@schema/index';
+import { inferSchema, generateJsonExampleFromSchema, validateWithSchema } from '../schema';
 import { formatForPrompt } from '../utils/formatter';
 import { debug } from '../utils/debug';
 
@@ -563,7 +563,7 @@ export function createTemplate<T = any>(
           };
           
           // Call the original execute method with the new options
-          return self.execute<R>(variables, newOptions);
+          return self.execute(variables, newOptions) as R;
         }
       });
       return result;

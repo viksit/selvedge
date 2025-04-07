@@ -222,12 +222,14 @@ export function createProgram<T = string>(
   // Private storage for execution options
   let _executionOptions: ProgramExecutionOptions = {};
 
-  const builder: ProgramBuilder<T> = {
+  // Using an interface without the callable signature for the initial builder
+  // The makeProgramCallable function will convert this to a fully callable ProgramBuilder<T>
+  const builder = {
     template,
     exampleList,
     modelDef, // Add modelDef property to the builder object
-    generatedCode: null,
-    persistId: undefined,
+    generatedCode: null as unknown as string | null,
+    persistId: undefined as string | undefined,
     needsSave: false,
     
     options(opts: ProgramExecutionOptions): ProgramBuilder<T> {
@@ -344,7 +346,7 @@ export function createProgram<T = string>(
       const codeResponse = extractCodeFromResponse(response);
 
       // Cache the generated code
-      this.generatedCode = String(codeResponse);
+      this.generatedCode = String(codeResponse) as unknown as typeof this.generatedCode;
       
       // Log basic information about the generated code
       const codeLines = String(codeResponse).split('\n').length;
@@ -398,7 +400,7 @@ export function createProgram<T = string>(
         const code = await this.generate(variables, options);
 
         // Store the generated code for future use
-        this.generatedCode = String(code);
+        this.generatedCode = String(code) as unknown as typeof this.generatedCode;
         
         // Try to extract function name for better logging
         const functionNameMatch = String(code).match(/function\s+([a-zA-Z0-9_]+)/);
@@ -482,7 +484,7 @@ export function createProgram<T = string>(
   
   // Make the builder callable
   const callableBuilder = makeProgramCallable(builder as unknown as ProgramBuilder<T>);
-  return callableBuilder;
+  return callableBuilder as ProgramBuilder<T>;
 }
 
 /**

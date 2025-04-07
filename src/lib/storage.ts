@@ -3,9 +3,9 @@
  * 
  * Provides versioned persistence for prompts and programs
  */
-import fsPromises from 'fs/promises';
-import path from 'path';
-import os from 'os';
+import * as fsPromises from 'fs/promises';
+import * as path from 'path';
+import * as os from 'os';
 
 /**
  * Store class for managing versioned persistence
