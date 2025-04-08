@@ -1,4 +1,4 @@
-import { describe, expect, test, beforeEach, it } from 'bun:test';
+import { describe, expect, test, beforeEach } from 'bun:test';
 import { selvedge } from '../../src/lib/core';
 import { ModelProvider } from '../../src/lib/types';
 import { ModelRegistry } from '../../src/lib/models';

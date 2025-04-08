@@ -1,4 +1,4 @@
-// @ts-ignore
+/// <reference path="../../types/bun-test.d.ts" />
 import { describe, expect, test, beforeEach } from 'bun:test';
 import { selvedge } from '../../src/lib/core';
 import { ModelRegistry } from '../../src/lib/models';

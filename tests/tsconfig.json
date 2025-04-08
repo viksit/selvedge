@@ -3,7 +3,10 @@
   "compilerOptions": {
     "noImplicitAny": false,
     "strictNullChecks": false,
-    "types": ["node", "commander"],
+    "types": [
+      "node",
+      "commander"
+    ],
     "typeRoots": [
       "../node_modules/@types",
       "../src/types"
