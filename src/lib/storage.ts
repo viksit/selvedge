@@ -389,17 +389,77 @@ export class Store {
           throw new Error(`Latest pointer for ${type} "${name}" not found`);
         }
         
+        // Read and parse the latest pointer file with robust error handling
         try {
-          const latestContent = await fsPromises.readFile(latestPath, 'utf-8');
-          const latest = JSON.parse(latestContent);
+          // Implement multiple read attempts for the latest pointer file
+          let latestContent: string | null = null;
+          let readError: Error | null = null;
           
-          if (!latest || !latest.version) {
-            debug('persistence', `Invalid latest pointer: ${JSON.stringify(latest)} (attempt ${attempt + 1}/${MAX_RETRIES})`);
+          // Try multiple read attempts in case of temporary file system issues
+          for (let readAttempt = 0; readAttempt < 3; readAttempt++) {
+            try {
+              latestContent = await fsPromises.readFile(latestPath, 'utf-8');
+              if (latestContent) break;
+            } catch (err) {
+              readError = err as Error;
+              debug('persistence', `Read attempt ${readAttempt + 1}/3 failed for latest pointer: ${readError.message}`);
+              await new Promise(resolve => setTimeout(resolve, 50)); // Short delay between read attempts
+            }
+          }
+          
+          if (!latestContent) {
+            debug('persistence', `Could not read latest pointer after multiple attempts: ${readError?.message || 'Unknown error'} (attempt ${attempt + 1}/${MAX_RETRIES})`);
             if (attempt < MAX_RETRIES - 1) {
               await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
               continue;
             }
-            throw new Error(`Invalid latest pointer for ${type} "${name}"`);
+            throw new Error(`Could not read latest pointer after multiple attempts: ${readError?.message || 'Unknown error'}`);
+          }
+          
+          // Check for empty content
+          if (!latestContent.trim()) {
+            debug('persistence', `Latest pointer file is empty: ${latestPath} (attempt ${attempt + 1}/${MAX_RETRIES})`);
+            if (attempt < MAX_RETRIES - 1) {
+              await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+              continue;
+            }
+            throw new Error(`Latest pointer file is empty for ${type} "${name}"`);
+          }
+          
+          // Parse JSON data
+          const latest = JSON.parse(latestContent);
+          
+          // Validate the pointer structure
+          if (!latest || typeof latest !== 'object') {
+            debug('persistence', `Latest pointer is not a valid object: ${JSON.stringify(latest)} (attempt ${attempt + 1}/${MAX_RETRIES})`);
+            if (attempt < MAX_RETRIES - 1) {
+              await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+              continue;
+            }
+            throw new Error(`Latest pointer is not a valid object for ${type} "${name}"`);
+          }
+          
+          // Check for version field
+          if (!latest.version || typeof latest.version !== 'string') {
+            debug('persistence', `Invalid latest pointer (missing/invalid version): ${JSON.stringify(latest)} (attempt ${attempt + 1}/${MAX_RETRIES})`);
+            if (attempt < MAX_RETRIES - 1) {
+              await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+              continue;
+            }
+            throw new Error(`Invalid latest pointer (missing version) for ${type} "${name}"`);
+          }
+          
+          // Verify the version file exists before attempting to load it
+          const versionPath = path.join(itemDir, `${latest.version}.json`);
+          const versionExists = await fsPromises.access(versionPath).then(() => true).catch(() => false);
+          
+          if (!versionExists) {
+            debug('persistence', `Latest pointer references non-existent version file: ${versionPath} (attempt ${attempt + 1}/${MAX_RETRIES})`);
+            if (attempt < MAX_RETRIES - 1) {
+              await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+              continue;
+            }
+            throw new Error(`Latest pointer references non-existent version ${latest.version} for ${type} "${name}"`);
           }
           
           debug('persistence', `Found latest version ${latest.version} for ${type} "${name}"`);
