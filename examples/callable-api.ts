@@ -1,5 +1,8 @@
 import { selvedge } from '../src';
 
+// Enable specific debug namespaces to see persistence-related logs
+selvedge.debug({ enabled: true, namespaces: ['prompt', 'persistence'] });
+
 selvedge.models({
   claude: selvedge.anthropic('claude-3-5-haiku-20241022'),
   gpt4: selvedge.openai('gpt-4')
@@ -8,28 +11,29 @@ selvedge.models({
 async function main() {
   // Example 1: Sentiment Analysis using callable prompt template
   console.log('Example 1: Sentiment Analysis');
-  
+
   // Create a template with type information
   const sentimentAnalyzer = selvedge.prompt`
     Analyze the sentiment in this text: ${text => text}
     Respond with a JSON object containing score (-1.0 to 1.0), label, and confidence.
+    Include detailed rationale for the score.
   `
     .returns<{ score: number; label: string; confidence: number }>()
     .using("claude")
     .options({ temperature: 0.2 })
-    .persist("sentiment");
-  
+    .persist("sentiment-test");
+
   // Call it directly as a function
   const result = await sentimentAnalyzer({
     text: "I absolutely love this product!"
   });
-  
+
   console.log("Sentiment result:", result);
   console.log();
-  
+
   // Example 2: Word Counter using callable program template
   console.log('Example 2: Word Counter');
-  
+
   // Create a program with type information
   const wordCounter = selvedge.program`
     /**
@@ -42,10 +46,10 @@ async function main() {
     .using("gpt4")
     .options({ forceRegenerate: false })
     .persist("word-counter");
-  
+
   // Call it directly as a function
   const frequency = await wordCounter("This is a test. This is only a test.");
-  
+
   console.log("Word frequency:", frequency);
 }
 

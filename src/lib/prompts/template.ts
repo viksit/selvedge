@@ -237,8 +237,8 @@ function createTemplateFromBase<T>(base: TemplateObject<any>, overrides: Partial
       // Store the options
       this._executionOptions = { ...(this._executionOptions || {}), ...opts };
       
-      // Create a new template with the same properties and make it callable
-      return createTemplateFromBase<T>(this, {});
+      // Return this instance for chaining
+      return this as unknown as PromptTemplate<T>;
     },
     
     // Create a new render function that uses the new segments
@@ -317,9 +317,10 @@ export function createTemplate<T = any>(
     _executionOptions: {},
     
     options(opts: PromptExecutionOptions): PromptTemplate<T> {
+      // Update the execution options on this instance
       this._executionOptions = { ...(this._executionOptions || {}), ...opts };
-      // Create a new template with the same properties to preserve callable functionality
-      return createTemplateFromBase<T>(this, {});
+      // Return this instance for chaining
+      return this as unknown as PromptTemplate<T>;
     },
     
     render(variables: PromptVariables = {}): string {
@@ -362,8 +363,12 @@ export function createTemplate<T = any>(
       debug('prompt', `Options: ${JSON.stringify(options, null, 2)}`);
       
       // If we have a persist ID but haven't loaded yet, try to load it first
+      debug('persistence', `execute(): checking persistence - persistId=${this.persistId}, needsSave=${this.needsSave}`);
       if (this.persistId && this.needsSave) {
+        console.log(`Prompt persistence check: persistId=${this.persistId}, needsSave=${this.needsSave}`);
         try {
+          debug('persistence', `Attempting to load prompt "${this.persistId}" from storage`);
+          console.log(`Attempting to load prompt "${this.persistId}" from storage`);
           const existingPrompt = await store.load('prompt', this.persistId);
           if (existingPrompt) {
             // Update our segments and variables from storage
@@ -466,11 +471,22 @@ export function createTemplate<T = any>(
       
       // Save the prompt if we have a persist ID and need to save
       if (this.persistId && this.needsSave) {
+        debug('persistence', `Checking persistence status: persistId=${this.persistId}, needsSave=${this.needsSave}`);
         debug('persistence', `Saving prompt "${this.persistId}" to storage`);
-        this.save(this.persistId).catch(error => {
+        console.log(`Saving prompt "${this.persistId}" to storage after execution`);
+        
+        try {
+          // Use await instead of promise.catch for better error handling
+          await this.save(this.persistId);
+          debug('persistence', `Successfully saved prompt "${this.persistId}" after execution`);
+        } catch (error) {
           debug('persistence', `Error saving prompt "${this.persistId}":`, error);
-        });
-        // Reset the flag after saving
+          console.log(`Error saving prompt "${this.persistId}" after execution:`, error);
+          // Don't reset the needsSave flag on error, so we can try again later
+          return formattedResponse as unknown as R; // Return early to avoid resetting needsSave
+        }
+        
+        // Only reset the flag after successful saving
         this.needsSave = false;
       }
       
@@ -484,37 +500,35 @@ export function createTemplate<T = any>(
       // Generate an example from the schema
       const example = generateJsonExampleFromSchema(zodSchema);
       
-      // Create a new template with the example format appended
-      const enhancedTemplate = this.clone();
-      
       // Only append format information if we have a non-empty example
       if (example && example !== '{}' && example !== '[]') {
         // Add the format example as a string segment
-        enhancedTemplate.segments.push(`\n\nYour response must be in this JSON format:\n${example}`);
+        this.segments.push(`\n\nYour response must be in this JSON format:\n${example}`);
       }
       
-      // Create a new template with the enhanced prompt and response handling
-      return createTemplateFromBase<R>(enhancedTemplate, {
-        formatResponse: (response: string): R => {
-          const extractedJson = extractJsonFromString(response);
-          if (extractedJson) {
-            try {
-              // Validate the extracted JSON against the schema
-              // Use silent option to avoid showing validation errors in the console
-              const validated = validateWithSchema(zodSchema, extractedJson, { silent: true });
-              if (validated) {
-                return validated as R;
-              }
-            } catch (e) {
-              // This catch block is less likely to be reached now with the silent option
-              console.warn('Response validation failed:', e);
+      // Modify the formatResponse method directly on this instance
+      this.formatResponse = (response: string): any => {
+        const extractedJson = extractJsonFromString(response);
+        if (extractedJson) {
+          try {
+            // Validate the extracted JSON against the schema
+            // Use silent option to avoid showing validation errors in the console
+            const validated = validateWithSchema(zodSchema, extractedJson, { silent: true });
+            if (validated) {
+              return validated;
             }
-            // If validation fails, return as-is
-            return extractedJson as R;
+          } catch (e) {
+            // This catch block is less likely to be reached now with the silent option
+            console.warn('Response validation failed:', e);
           }
-          return response as unknown as R;
+          // If validation fails, return as-is
+          return extractedJson;
         }
-      });
+        return response as unknown as any;
+      };
+      
+      // Return this instance with the updated methods
+      return this as unknown as PromptTemplate<R>;
     },
     
     formatResponse(response: string): T {
@@ -523,79 +537,98 @@ export function createTemplate<T = any>(
     },
     
     prefix(text: string): PromptTemplate<T> {
-      // Create a new template with the prefix text added
-      return createTemplateFromBase<T>(this, {
-        segments: [text, ...this.segments]
-      });
+      // Modify the current template by adding the prefix text
+      this.segments.unshift(text);
+      return this as unknown as PromptTemplate<T>;
     },
     
     suffix(text: string): PromptTemplate<T> {
-      // Create a new template with the suffix text added
-      return createTemplateFromBase<T>(this, {
-        segments: [...this.segments, text]
-      });
+      // Modify the current template by adding the suffix text
+      this.segments.push(text);
+      return this as unknown as PromptTemplate<T>;
     },
     
     clone(): PromptTemplate<T> {
-      // Create a deep copy of the template
+      // Create a deep copy of the template using createTemplateFromBase
+      // This is one case where we do want to create a new object
       return createTemplateFromBase<T>(this, {});
     },
     
     train(examples: Array<{ text: any, output: T }>): PromptTemplate<T> {
-      // Create a new template with training examples
+      // Format the examples text
       const examplesText = examples.map(ex => {
         const input = typeof ex.text === 'string' ? ex.text : JSON.stringify(ex.text, null, 2);
         const output = typeof ex.output === 'string' ? ex.output : JSON.stringify(ex.output, null, 2);
         return `Input: ${input}\nOutput: ${output}\n---\n`;
       }).join('\n');
       
-      // Add examples as a prefix
+      // Create the prefix text
       const prefixText = `Examples:\n${examplesText}\n\nNow, process the following input:`;
+      
+      // Add the prefix to this template
       return this.prefix(prefixText);
     },
     
     using(model: string | ModelDefinition): PromptTemplate<T> {
-      // Create a new template with the specified model
-      const self = this;
-      const result = createTemplateFromBase<T>(this, {
-        execute: async function<R = T>(
-          variables: PromptVariables,
-          options: PromptExecutionOptions = {}
-        ): Promise<R> {
-          // Override the model in options
-          const newOptions = {
-            ...options,
-            model
-          };
-          
-          // Call the original execute method with the new options
-          return self.execute(variables, newOptions) as R;
-        }
-      });
-      return result;
+      // Store the original execute method
+      const originalExecute = this.execute;
+      
+      // Replace the execute method on this instance
+      this.execute = async function<R = T>(
+        variables: PromptVariables,
+        options: PromptExecutionOptions = {}
+      ): Promise<R> {
+        // Override the model in options
+        const newOptions = {
+          ...options,
+          model
+        };
+        
+        // Call the original execute method with the new options
+        return originalExecute.call(this, variables, newOptions) as R;
+      };
+      
+      return this as unknown as PromptTemplate<T>;
     },
     
     persist(id: string): PromptTemplate<T> {
-      // For testing purposes - this is checked in tests
+      // Add more detailed debug statements to see exactly what's happening
+      debug('persistence', `Setting persistence properties for prompt "${id}"`);
       debug('prompt', `Prompt "${id}" has been persisted for later use`);
+      
+      // Explicitly log the current state
+      const currentPersistId = this.persistId;
+      const currentNeedsSave = this.needsSave;
+      debug('persistence', `Current state before persist: persistId=${currentPersistId}, needsSave=${currentNeedsSave}`);
 
       // Set properties directly on this object instead of creating a new one
       this.persistId = id;
       this.needsSave = true;
+      
+      debug('persistence', `New state after persist: persistId=${this.persistId}, needsSave=${this.needsSave}`);
       
       // Return the original proxy object for chaining
       return this as unknown as PromptTemplate<T>;
     },
     
     async save(name: string): Promise<PromptTemplate<T>> {
+      // Add debug information to track prompt persistence
+      debug('persistence', `save() called for prompt "${name}"`);
+      console.log(`Saving prompt "${name}" to storage`);
+      
       // Prepare data for storage
       const data = {
         segments: this.segments,
         variables: this.variables
       };
       
+      debug('persistence', `Prompt data prepared, calling store.save('prompt', '${name}')`);
+      
       // Save to storage
       await store.save('prompt', name, data);
+      
+      debug('persistence', `store.save completed for prompt "${name}"`);
+      console.log(`Prompt "${name}" successfully saved to storage`);
       
       // Return this for chaining instead of creating a new object
       return this as unknown as PromptTemplate<T>;
