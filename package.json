@@ -25,7 +25,7 @@
     "@types/bun": "latest",
     "@types/commander": "^2.12.5",
     "@types/node": "^22.13.16",
-    "bun-types": "^1.2.8",
+    "bun-types": "1.1.29",
     "tsconfig-paths": "^4.2.0",
     "typescript": "^5.0.0"
   },
