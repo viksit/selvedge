@@ -12,6 +12,8 @@ import { ModelRegistry } from '../models';
 import { ModelDefinition, ModelProvider } from '../types';
 import * as ts from 'typescript';
 import * as vm from 'vm';
+import * as path from 'path';
+import * as fs from 'fs/promises';
 import { store } from '../storage';
 import { debug } from '../utils/debug';
 
@@ -456,13 +458,23 @@ export function createProgram<T = string>(
     },
 
     async save(name: string): Promise<ProgramBuilder<T>> {
+      console.log(`--------------- PROGRAM SAVE DEBUG ---------------`);
+      console.log(`Saving program: ${name}`);
+      console.log(`Store base path: ${store.getBasePath()}`);
+      console.log(`Store instance ID: ${(store as any).testId || 'undefined'}`);
+      
       // If we don't have generated code yet, generate it
       if (!this.generatedCode) {
         try {
+          console.log(`No generated code, generating now...`);
           await this.generate({});
+          console.log(`Code generated successfully`);
         } catch (error) {
+          console.log(`Error generating code:`, error);
           debug('program', `Could not pre-generate code for program "${name}". Will store template only.`);
         }
+      } else {
+        console.log(`Using existing generated code`);
       }
 
       // Prepare data for storage
@@ -475,8 +487,30 @@ export function createProgram<T = string>(
         model: this.modelDef,
         generatedCode: this.generatedCode
       };
+      
+      console.log(`Data prepared for storage, calling store.save...`);
 
-      // Save to storage
+      try {
+        // Save to storage
+        const versionId = await store.save('program', name, data);
+        console.log(`Program saved with version ID: ${versionId}`);
+        
+        // Verify the program exists after saving
+        const programDir = path.join(store.getBasePath(), 'programs', name);
+        const dirExists = await fs.access(programDir).then(() => true).catch(() => false);
+        console.log(`Program directory exists after save: ${dirExists ? 'YES' : 'NO'} - ${programDir}`);
+        
+        if (dirExists) {
+          const files = await fs.readdir(programDir);
+          console.log(`Files in program directory:`, files);
+        }
+      } catch (error) {
+        console.log(`Error saving program:`, error);
+      }
+      
+      console.log(`-------------------------------------------------`);
+      
+      // Save to storage (retry outside try/catch to propagate errors)
       await store.save('program', name, data);
 
       // Return this for chaining

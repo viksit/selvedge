@@ -33,6 +33,15 @@ export class Store {
   }
   
   /**
+   * Set the base path for storage (primarily for testing)
+   * @param path New base path
+   */
+  setBasePath(path: string): void {
+    this.baseDir = path;
+    debug('persistence', `Storage base path set to: ${path}`);
+  }
+  
+  /**
    * Generate a unique ID with timestamp for versioning
    * @returns A unique version ID
    */
@@ -54,21 +63,72 @@ export class Store {
    * @param dirPath Path to ensure exists
    */
   private async ensureDir(dirPath: string): Promise<void> {
-    try {
-      // Make sure the base directory exists first
-      await fsPromises.mkdir(this.baseDir, { recursive: true });
-      
-      // Then create the requested directory
-      await fsPromises.mkdir(dirPath, { recursive: true });
-      
-      // Verify the directory was created
-      await fsPromises.access(dirPath);
-      
-      debug('persistence', `Created/verified directory: ${dirPath}`);
-    } catch (error: unknown) {
-      const err = error as Error;
-      debug('persistence', `Error creating directory ${dirPath}: ${err.message}`);
-      throw new Error(`Failed to create directory ${dirPath}: ${err.message}`);
+    debug('persistence', `Ensuring directory exists: ${dirPath}`);
+    debug('persistence', `Current base directory: ${this.baseDir}`);
+    
+    // Implement retry logic to handle file system timing issues
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY = 50; // ms
+    
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      try {
+        // Make sure the base directory exists first
+        await fsPromises.mkdir(this.baseDir, { recursive: true });
+        
+        // Verify the base directory was created successfully
+        const baseExists = await fsPromises.access(this.baseDir).then(() => true).catch(() => false);
+        if (!baseExists) {
+          debug('persistence', `Base directory access failed: ${this.baseDir} (attempt ${attempt + 1}/${MAX_RETRIES})`);
+          if (attempt < MAX_RETRIES - 1) {
+            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+            continue;
+          }
+          throw new Error(`Failed to access base directory ${this.baseDir}`);
+        }
+        
+        // Create all parent directories if needed
+        const parentDir = path.dirname(dirPath);
+        await fsPromises.mkdir(parentDir, { recursive: true });
+        
+        // Verify parent directory exists
+        const parentExists = await fsPromises.access(parentDir).then(() => true).catch(() => false);
+        if (!parentExists) {
+          debug('persistence', `Parent directory access failed: ${parentDir} (attempt ${attempt + 1}/${MAX_RETRIES})`);
+          if (attempt < MAX_RETRIES - 1) {
+            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+            continue;
+          }
+          throw new Error(`Failed to access parent directory ${parentDir}`);
+        }
+        
+        // Then create the requested directory
+        await fsPromises.mkdir(dirPath, { recursive: true });
+        
+        // Verify the directory was created
+        const dirExists = await fsPromises.access(dirPath).then(() => true).catch(() => false);
+        if (!dirExists) {
+          debug('persistence', `Directory access failed after creation: ${dirPath} (attempt ${attempt + 1}/${MAX_RETRIES})`);
+          if (attempt < MAX_RETRIES - 1) {
+            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+            continue;
+          }
+          throw new Error(`Failed to access directory after creation ${dirPath}`);
+        }
+        
+        debug('persistence', `Successfully created/verified directory: ${dirPath}`);
+        return; // Success - exit the function
+      } catch (error: unknown) {
+        const err = error as Error;
+        debug('persistence', `Error ensuring directory ${dirPath} (attempt ${attempt + 1}/${MAX_RETRIES}): ${err.message}`);
+        
+        if (attempt < MAX_RETRIES - 1) {
+          // Retry after a delay
+          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+          continue;
+        }
+        
+        throw new Error(`Failed to create directory ${dirPath} after ${MAX_RETRIES} attempts: ${err.message}`);
+      }
     }
   }
   
@@ -84,33 +144,29 @@ export class Store {
       throw new Error('Item name must be a non-empty string');
     }
     
+    debug('persistence', `Saving ${type} with name: ${name}`);
+    debug('persistence', `Current base directory: ${this.baseDir}`);
+    
     // Create directories if needed
     const typeDir = path.join(this.baseDir, type + 's');
     const itemDir = path.join(typeDir, name);
     
-    // Ensure base directory exists
+    // Use the enhanced ensureDir method to create all necessary directories
     try {
-      await fsPromises.mkdir(this.baseDir, { recursive: true });
-      debug('persistence', `Ensured base directory exists: ${this.baseDir}`);
+      // First ensure the base directory exists
+      await this.ensureDir(this.baseDir);
+      
+      // Then ensure the type directory exists
+      await this.ensureDir(typeDir);
+      
+      // Finally ensure the item directory exists
+      await this.ensureDir(itemDir);
+      
+      debug('persistence', `All directories created successfully for ${type} ${name}`);
     } catch (error) {
-      debug('persistence', `Error creating base directory: ${(error as Error).message}`);
-    }
-    
-    // Ensure type directory exists
-    try {
-      await fsPromises.mkdir(typeDir, { recursive: true });
-      debug('persistence', `Ensured type directory exists: ${typeDir}`);
-    } catch (error) {
-      debug('persistence', `Error creating type directory: ${(error as Error).message}`);
-    }
-    
-    // Ensure item directory exists
-    try {
-      await fsPromises.mkdir(itemDir, { recursive: true });
-      debug('persistence', `Ensured item directory exists: ${itemDir}`);
-    } catch (error) {
-      debug('persistence', `Error creating item directory: ${(error as Error).message}`);
-      throw new Error(`Failed to create item directory ${itemDir}: ${(error as Error).message}`);
+      const err = error as Error;
+      debug('persistence', `Failed to create directories for ${type} ${name}: ${err.message}`);
+      throw new Error(`Failed to create directories for ${type} "${name}": ${err.message}`);
     }
     
     // Generate version ID
@@ -129,23 +185,149 @@ export class Store {
     
     // Save version
     const versionPath = path.join(itemDir, `${versionId}.json`);
+    debug('persistence', `Saving ${type} "${name}" version "${versionId}" to ${versionPath}`);
+    
+    // Implement retry logic for save operations
+    const MAX_SAVE_RETRIES = 3;
+    const SAVE_RETRY_DELAY = 50; // ms
+    
     try {
-      await fsPromises.writeFile(versionPath, JSON.stringify(itemData, null, 2));
+      // Phase 1: Save the version file with retry logic
+      for (let saveAttempt = 0; saveAttempt < MAX_SAVE_RETRIES; saveAttempt++) {
+        try {
+          // Save version file
+          await fsPromises.writeFile(versionPath, JSON.stringify(itemData, null, 2));
+          
+          // Always add a small delay after write to ensure filesystem sync
+          await new Promise(resolve => setTimeout(resolve, 20));
+          
+          // Verify it was saved correctly
+          const versionExists = await fsPromises.access(versionPath).then(() => true).catch(() => false);
+          if (!versionExists) {
+            debug('persistence', `Failed to verify version file was created: ${versionPath} (attempt ${saveAttempt + 1}/${MAX_SAVE_RETRIES})`);
+            if (saveAttempt < MAX_SAVE_RETRIES - 1) {
+              await new Promise(resolve => setTimeout(resolve, SAVE_RETRY_DELAY));
+              continue;
+            }
+            throw new Error(`Failed to create version file after ${MAX_SAVE_RETRIES} attempts`);
+          }
+          
+          // Check that we can actually read the file back - this ensures file system sync
+          try {
+            const content = await fsPromises.readFile(versionPath, 'utf8');
+            const parsed = JSON.parse(content);
+            if (!parsed || !parsed._metadata || parsed._metadata.version !== versionId) {
+              debug('persistence', `File was created but content verification failed (attempt ${saveAttempt + 1}/${MAX_SAVE_RETRIES})`);
+              if (saveAttempt < MAX_SAVE_RETRIES - 1) {
+                // Try to rewrite it
+                await fsPromises.writeFile(versionPath, JSON.stringify(itemData, null, 2));
+                await new Promise(resolve => setTimeout(resolve, SAVE_RETRY_DELAY));
+                continue;
+              }
+              throw new Error(`File content verification failed after ${MAX_SAVE_RETRIES} attempts`);
+            }
+            
+            // Success! File was saved and content verified
+            debug('persistence', `File content verified successfully after ${saveAttempt + 1} attempt(s)`);
+            break;
+          } catch (readErr) {
+            debug('persistence', `Warning: Could not verify file contents: ${(readErr as Error).message} (attempt ${saveAttempt + 1}/${MAX_SAVE_RETRIES})`);
+            if (saveAttempt < MAX_SAVE_RETRIES - 1) {
+              // Try to rewrite it
+              await fsPromises.writeFile(versionPath, JSON.stringify(itemData, null, 2));
+              await new Promise(resolve => setTimeout(resolve, SAVE_RETRY_DELAY));
+              continue;
+            }
+            throw new Error(`Failed to verify file contents after ${MAX_SAVE_RETRIES} attempts: ${(readErr as Error).message}`);
+          }
+        } catch (error) {
+          if (saveAttempt < MAX_SAVE_RETRIES - 1) {
+            debug('persistence', `Error saving version file (attempt ${saveAttempt + 1}/${MAX_SAVE_RETRIES}): ${(error as Error).message}. Retrying...`);
+            await new Promise(resolve => setTimeout(resolve, SAVE_RETRY_DELAY));
+            continue;
+          }
+          throw error;
+        }
+      }
+      
+      debug('persistence', `Successfully saved ${type} "${name}" version "${versionId}"`);
+      
+      // Phase 2: Update the latest pointer after successfully saving the version file
+      const latestPath = path.join(itemDir, 'latest.json');
+      debug('persistence', `Updating latest pointer for ${type} "${name}" to ${versionId}`);
+      
+      // Implement retry logic for latest pointer update
+      const MAX_LATEST_RETRIES = 3;
+      const LATEST_RETRY_DELAY = 50; // ms
+      
+      for (let latestAttempt = 0; latestAttempt < MAX_LATEST_RETRIES; latestAttempt++) {
+        try {      
+          // Create the latest pointer
+          const latestData = JSON.stringify({ version: versionId }, null, 2);
+          await fsPromises.writeFile(latestPath, latestData);
+          
+          // Add a small delay after write to ensure filesystem sync
+          await new Promise(resolve => setTimeout(resolve, 20));
+          
+          // Verify it was saved correctly
+          const latestExists = await fsPromises.access(latestPath).then(() => true).catch(() => false);
+          if (!latestExists) {
+            debug('persistence', `Failed to verify latest pointer was created: ${latestPath} (attempt ${latestAttempt + 1}/${MAX_LATEST_RETRIES})`);
+            if (latestAttempt < MAX_LATEST_RETRIES - 1) {
+              await new Promise(resolve => setTimeout(resolve, LATEST_RETRY_DELAY));
+              continue;
+            }
+            throw new Error(`Failed to create latest pointer after ${MAX_LATEST_RETRIES} attempts`);
+          }
+          
+          // Double-check content
+          try {
+            const content = await fsPromises.readFile(latestPath, 'utf-8');
+            const latest = JSON.parse(content);
+            if (latest.version !== versionId) {
+              debug('persistence', `Latest pointer mismatch: ${latest.version} != ${versionId}`);
+              // Try to fix it
+              await fsPromises.writeFile(latestPath, latestData);
+              await new Promise(resolve => setTimeout(resolve, 20)); // Small delay after rewrite
+              
+              if (latestAttempt < MAX_LATEST_RETRIES - 1) {
+                continue;
+              }
+            }
+            
+            // Success!
+            debug('persistence', `Successfully updated latest pointer for ${type} "${name}"`);
+            break;
+          } catch (parseErr) {
+            debug('persistence', `Warning: Could not verify latest pointer contents: ${(parseErr as Error).message} (attempt ${latestAttempt + 1}/${MAX_LATEST_RETRIES})`);
+            if (latestAttempt < MAX_LATEST_RETRIES - 1) {
+              // Try to rewrite it
+              await fsPromises.writeFile(latestPath, latestData);
+              await new Promise(resolve => setTimeout(resolve, LATEST_RETRY_DELAY));
+              continue;
+            }
+            throw new Error(`Failed to verify latest pointer contents after ${MAX_LATEST_RETRIES} attempts: ${(parseErr as Error).message}`);
+          }
+        } catch (error) {
+          if (latestAttempt < MAX_LATEST_RETRIES - 1) {
+            debug('persistence', `Error updating latest pointer (attempt ${latestAttempt + 1}/${MAX_LATEST_RETRIES}): ${(error as Error).message}. Retrying...`);
+            await new Promise(resolve => setTimeout(resolve, LATEST_RETRY_DELAY));
+            continue;
+          }
+          debug('persistence', `Failed to update latest pointer after ${MAX_LATEST_RETRIES} attempts: ${(error as Error).message}`);
+          // Continue even if latest pointer update fails - we still saved the version successfully
+          break;
+        }
+      }
+      
+      // Return the version ID even if latest pointer update failed
+      return versionId;
     } catch (error: unknown) {
       const err = error as Error;
+      debug('persistence', `Error saving ${type} "${name}": ${err.message}`);
       throw new Error(`Failed to save ${type} "${name}": ${err.message}`);
     }
     
-    // Update latest pointer
-    const latestPath = path.join(itemDir, 'latest.json');
-    try {
-      await fsPromises.writeFile(latestPath, JSON.stringify({ version: versionId }, null, 2));
-    } catch (error: unknown) {
-      const err = error as Error;
-      throw new Error(`Failed to update latest pointer for ${type} "${name}": ${err.message}`);
-    }
-    
-    return versionId;
   }
   
   /**
@@ -161,20 +343,90 @@ export class Store {
       return this.loadVersion(type, name, version);
     }
     
-    const itemDir = path.join(this.baseDir, type + 's', name);
+    const typeDir = path.join(this.baseDir, type + 's');
+    const itemDir = path.join(typeDir, name);
     
-    try {
-      // Read latest pointer
-      const latestPath = path.join(itemDir, 'latest.json');
-      const latestContent = await fsPromises.readFile(latestPath, 'utf-8');
-      const latest = JSON.parse(latestContent);
-      
-      // Load that version
-      return await this.loadVersion(type, name, latest.version);
-    } catch (error: unknown) {
-      const err = error as Error;
-      throw new Error(`Failed to load ${type} "${name}": ${err.message}`);
+    debug('persistence', `Loading latest ${type} "${name}" from ${itemDir}`);
+    
+    // Implement retry logic to handle potential race conditions with filesystem
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY = 100; // ms
+    
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      try {
+        // Verify directories exist
+        const typeDirExists = await fsPromises.access(typeDir).then(() => true).catch(() => false);
+        const itemDirExists = await fsPromises.access(itemDir).then(() => true).catch(() => false);
+        
+        if (!typeDirExists) {
+          debug('persistence', `Type directory does not exist: ${typeDir} (attempt ${attempt + 1}/${MAX_RETRIES})`);
+          if (attempt < MAX_RETRIES - 1) {
+            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+            continue;
+          }
+          throw new Error(`${type}s directory not found`);
+        }
+        
+        if (!itemDirExists) {
+          debug('persistence', `Item directory does not exist: ${itemDir} (attempt ${attempt + 1}/${MAX_RETRIES})`);
+          if (attempt < MAX_RETRIES - 1) {
+            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+            continue;
+          }
+          throw new Error(`${type} "${name}" not found`);
+        }
+        
+        // Read latest pointer
+        const latestPath = path.join(itemDir, 'latest.json');
+        const latestExists = await fsPromises.access(latestPath).then(() => true).catch(() => false);
+        
+        if (!latestExists) {
+          debug('persistence', `Latest pointer does not exist: ${latestPath} (attempt ${attempt + 1}/${MAX_RETRIES})`);
+          if (attempt < MAX_RETRIES - 1) {
+            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+            continue;
+          }
+          throw new Error(`Latest pointer for ${type} "${name}" not found`);
+        }
+        
+        try {
+          const latestContent = await fsPromises.readFile(latestPath, 'utf-8');
+          const latest = JSON.parse(latestContent);
+          
+          if (!latest || !latest.version) {
+            debug('persistence', `Invalid latest pointer: ${JSON.stringify(latest)} (attempt ${attempt + 1}/${MAX_RETRIES})`);
+            if (attempt < MAX_RETRIES - 1) {
+              await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+              continue;
+            }
+            throw new Error(`Invalid latest pointer for ${type} "${name}"`);
+          }
+          
+          debug('persistence', `Found latest version ${latest.version} for ${type} "${name}"`);
+          
+          // Load that version
+          return await this.loadVersion(type, name, latest.version);
+        } catch (parseError) {
+          debug('persistence', `Error parsing latest pointer: ${(parseError as Error).message} (attempt ${attempt + 1}/${MAX_RETRIES})`);
+          if (attempt < MAX_RETRIES - 1) {
+            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+            continue;
+          }
+          throw new Error(`Failed to parse latest pointer for ${type} "${name}": ${(parseError as Error).message}`);
+        }
+      } catch (error) {
+        if (attempt < MAX_RETRIES - 1) {
+          debug('persistence', `Error loading ${type} "${name}": ${(error as Error).message} (attempt ${attempt + 1}/${MAX_RETRIES}). Retrying...`);
+          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+          continue;
+        }
+        debug('persistence', `Error loading ${type} "${name}": ${(error as Error).message}. All retries failed.`);
+        throw new Error(`Failed to load ${type} "${name}": ${(error as Error).message}`);
+      }
     }
+    
+    // This should never be reached due to the throws in the loop, but TypeScript needs a return
+    throw new Error(`Failed to load ${type} "${name}" after ${MAX_RETRIES} attempts`);
   }
   
   /**
@@ -185,15 +437,117 @@ export class Store {
    * @returns The loaded item data
    */
   async loadVersion(type: 'prompt' | 'program', name: string, version: string): Promise<any> {
-    const versionPath = path.join(this.baseDir, type + 's', name, `${version}.json`);
+    const typeDir = path.join(this.baseDir, type + 's');
+    const itemDir = path.join(typeDir, name);
+    const versionPath = path.join(itemDir, `${version}.json`);
     
-    try {
-      const content = await fsPromises.readFile(versionPath, 'utf-8');
-      return JSON.parse(content);
-    } catch (error: unknown) {
-      const err = error as Error;
-      throw new Error(`Failed to load ${type} "${name}" version "${version}": ${err.message}`);
+    debug('persistence', `Loading ${type} "${name}" version "${version}" from ${versionPath}`);
+    
+    // Implement retry logic to handle potential race conditions with filesystem
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY = 100; // ms
+    
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      try {
+        // Verify directories and file exist
+        const typeDirExists = await fsPromises.access(typeDir).then(() => true).catch(() => false);
+        const itemDirExists = await fsPromises.access(itemDir).then(() => true).catch(() => false);
+        const versionExists = await fsPromises.access(versionPath).then(() => true).catch(() => false);
+        
+        if (!typeDirExists) {
+          debug('persistence', `Type directory does not exist: ${typeDir} (attempt ${attempt + 1}/${MAX_RETRIES})`);
+          if (attempt < MAX_RETRIES - 1) {
+            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+            continue;
+          }
+          throw new Error(`${type}s directory not found`);
+        }
+        
+        if (!itemDirExists) {
+          debug('persistence', `Item directory does not exist: ${itemDir} (attempt ${attempt + 1}/${MAX_RETRIES})`);
+          if (attempt < MAX_RETRIES - 1) {
+            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+            continue;
+          }
+          throw new Error(`${type} "${name}" not found`);
+        }
+        
+        if (!versionExists) {
+          debug('persistence', `Version file does not exist: ${versionPath} (attempt ${attempt + 1}/${MAX_RETRIES})`);
+          if (attempt < MAX_RETRIES - 1) {
+            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+            continue;
+          }
+          throw new Error(`Version ${version} of ${type} "${name}" not found`);
+        }
+        
+        try {
+          // Read the file with a retry mechanism for potential read errors
+          let content: string | null = null;
+          let readError: Error | null = null;
+          
+          // Try multiple read attempts in case of temporary file system issues
+          for (let readAttempt = 0; readAttempt < 3; readAttempt++) {
+            try {
+              content = await fsPromises.readFile(versionPath, 'utf-8');
+              if (content) break;
+            } catch (err) {
+              readError = err as Error;
+              debug('persistence', `Read attempt ${readAttempt + 1}/3 failed: ${readError.message}`);
+              await new Promise(resolve => setTimeout(resolve, 50)); // Short delay between read attempts
+            }
+          }
+          
+          if (!content) {
+            throw new Error(`Could not read file after multiple attempts: ${readError?.message || 'Unknown error'}`);
+          }
+          
+          // Validate file content
+          if (!content.trim()) {
+            debug('persistence', `File appears to be empty: ${versionPath} (attempt ${attempt + 1}/${MAX_RETRIES})`);
+            if (attempt < MAX_RETRIES - 1) {
+              await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+              continue;
+            }
+            throw new Error(`Empty file for ${type} "${name}" version "${version}"`);
+          }
+          
+          // Parse the JSON data
+          const data = JSON.parse(content);
+          
+          // Verify the data has the expected structure
+          if (!data || !data._metadata || data._metadata.version !== version) {
+            debug('persistence', `Invalid data structure in ${versionPath} (attempt ${attempt + 1}/${MAX_RETRIES})`);
+            if (attempt < MAX_RETRIES - 1) {
+              await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+              continue;
+            }
+            throw new Error(`Invalid data structure for ${type} "${name}" version "${version}"`);
+          }
+          
+          debug('persistence', `Successfully loaded ${type} "${name}" version "${version}"`);
+          return data;
+        } catch (parseError) {
+          debug('persistence', `Error parsing file content: ${(parseError as Error).message} (attempt ${attempt + 1}/${MAX_RETRIES})`);
+          if (attempt < MAX_RETRIES - 1) {
+            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+            continue;
+          }
+          throw new Error(`Failed to parse ${type} "${name}" version "${version}": ${(parseError as Error).message}`);
+        }
+      } catch (error) {
+        if (attempt < MAX_RETRIES - 1) {
+          debug('persistence', `Error loading ${type} "${name}" version "${version}": ${(error as Error).message} (attempt ${attempt + 1}/${MAX_RETRIES}). Retrying...`);
+          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+          continue;
+        }
+        debug('persistence', `Error loading ${type} "${name}" version "${version}": ${(error as Error).message}. All retries failed.`);
+        throw new Error(`Failed to load ${type} "${name}" version "${version}": ${(error as Error).message}`);
+      }
     }
+    
+    // This should never be reached due to the throws in the loop, but TypeScript needs a return
+    throw new Error(`Failed to load ${type} "${name}" version "${version}" after ${MAX_RETRIES} attempts`);
   }
   
   /**

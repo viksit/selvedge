@@ -231,6 +231,14 @@ export const selvedge: SelvedgeInstance = {
    * ```
    */
   async loadProgram<T = string>(name: string, version?: string): Promise<ProgramBuilder<T>> {
+    // Debug store instance
+    console.log('--------------- LOAD PROGRAM DEBUG ---------------');
+    console.log(`Load store ID: ${(store as any).testId || 'undefined'}`);
+    console.log(`Load store instance: ${store.constructor.name}`);
+    console.log(`Load base path: ${store.getBasePath()}`);
+    console.log(`Loading program: ${name}`);
+    console.log('---------------------------------------------------');
+    
     // Load the program data from storage
     const data = await store.load('program', name, version);
     
