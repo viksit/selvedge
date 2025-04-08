@@ -1,7 +1,7 @@
 import { selvedge } from '../src';
 
 // Enable specific debug namespaces to see persistence-related logs
-selvedge.debug({ enabled: true, namespaces: ['prompt', 'persistence'] });
+// selvedge.debug({ enabled: true, namespaces: ['prompt', 'persistence'] });
 
 selvedge.models({
   claude: selvedge.anthropic('claude-3-5-haiku-20241022'),
@@ -21,7 +21,7 @@ async function main() {
     .returns<{ score: number; label: string; confidence: number }>()
     .using("claude")
     .options({ temperature: 0.2 })
-    .persist("sentiment-test");
+    .persist("sentiment-test-1");
 
   // Call it directly as a function
   const result = await sentimentAnalyzer({
