@@ -152,24 +152,24 @@ interface TemplateObject<T> {
  */
 function makeTemplateCallable<T>(template: TemplateObject<T>): PromptTemplate<T> {
   // Add debug information to track the proxy creation process
-  debug('prompt', `Creating callable proxy for template, persistId=${template.persistId}, needsSave=${template.needsSave}`);
+  // debug('prompt', `Creating callable proxy for template, persistId=${template.persistId}, needsSave=${template.needsSave}`);
 
   // If this template is already callable (has our proxy), return it as is
   if (template[CALLABLE_MARKER]) {
-    debug('prompt', `Template is already callable, returning as is with persistId=${template.persistId}`);
+    // debug('prompt', `Template is already callable, returning as is with persistId=${template.persistId}`);
     return template as unknown as PromptTemplate<T>;
   }
 
   // Create a base function that will be our callable template
   const baseFunction = function (...args: any[]) {
-    debug('prompt', `Callable proxy invoked directly, template.persistId=${template.persistId}`);
+    // debug('prompt', `Callable proxy invoked directly, template.persistId=${template.persistId}`);
     const [variables = {}, options = {}] = args;
     const mergedOptions = { ...(template._executionOptions || {}), ...options };
     return template.execute(variables, mergedOptions);
   };
 
   // Pre-wrap all methods that return templates (similar to program implementation)
-  debug('prompt', `Pre-wrapping methods that return templates`);
+  // debug('prompt', `Pre-wrapping methods that return templates`);
   const methodsThatReturnTemplate = [
     'returns', 'prefix', 'suffix', 'clone', 'train',
     'using', 'options', 'persist', 'save'
@@ -181,19 +181,19 @@ function makeTemplateCallable<T>(template: TemplateObject<T>): PromptTemplate<T>
     const originalMethod = template[methodName];
     if (typeof originalMethod === 'function') {
       wrappedMethods[methodName] = function (...args: any[]) {
-        debug('prompt', `Calling pre-wrapped method ${methodName}, template.persistId=${template.persistId}`);
+        // debug('prompt', `Calling pre-wrapped method ${methodName}, template.persistId=${template.persistId}`);
         // Call the original method on the template object to ensure state is preserved
         const result = originalMethod.apply(template, args);
 
         // Special handling for persist and save
         if (methodName === 'persist' || methodName === 'save') {
-          debug('prompt', `${methodName} called, returning original proxy (template.persistId=${template.persistId})`);
+          // debug('prompt', `${methodName} called, returning original proxy (template.persistId=${template.persistId})`);
           return proxy; // Return the proxy itself for chaining
         }
 
         // For other methods, ensure the result is callable if it's a template
         if (result && typeof result === 'object' && 'segments' in result) {
-          debug('prompt', `Method ${methodName} returned a template object, making it callable`);
+          // debug('prompt', `Method ${methodName} returned a template object, making it callable`);
           return makeTemplateCallable(result as TemplateObject<any>);
         }
 
@@ -203,16 +203,16 @@ function makeTemplateCallable<T>(template: TemplateObject<T>): PromptTemplate<T>
   });
 
   // Copy properties, with special handling for wrapped methods
-  debug('prompt', `Copying properties from template to baseFunction`);
+  // debug('prompt', `Copying properties from template to baseFunction`);
   Object.getOwnPropertyNames(template).forEach(prop => {
     if (prop !== 'constructor') {
       if (prop in wrappedMethods) {
-        debug('prompt', `Using pre-wrapped method for ${prop}`);
+        // debug('prompt', `Using pre-wrapped method for ${prop}`);
         (baseFunction as any)[prop] = wrappedMethods[prop];
       } else {
         (baseFunction as any)[prop] = (template as any)[prop];
         if (prop === 'persistId' || prop === 'needsSave' || prop === '_executionOptions') {
-          debug('prompt', `Copied property ${prop}=${(template as any)[prop]} to baseFunction`);
+          // debug('prompt', `Copied property ${prop}=${(template as any)[prop]} to baseFunction`);
         }
       }
     }
@@ -225,7 +225,7 @@ function makeTemplateCallable<T>(template: TemplateObject<T>): PromptTemplate<T>
   const proxy = new Proxy(baseFunction, {
     // apply trap will be called when the proxy is invoked as a function
     apply: (target, thisArg, args) => {
-      debug('prompt', `Proxy apply trap called, template.persistId=${template.persistId}`);
+      // debug('prompt', `Proxy apply trap called, template.persistId=${template.persistId}`);
       return target.apply(thisArg, args);
     },
 
@@ -234,7 +234,7 @@ function makeTemplateCallable<T>(template: TemplateObject<T>): PromptTemplate<T>
       // Direct access to properties we need live values for
       if (prop === 'persistId' || prop === 'needsSave' || prop === '_executionOptions') {
         const value = template[prop];
-        debug('prompt', `Proxy direct property access: ${String(prop)}, value=${value}`);
+        // debug('prompt', `Proxy direct property access: ${String(prop)}, value=${value}`);
         return value;
       }
 
@@ -246,7 +246,7 @@ function makeTemplateCallable<T>(template: TemplateObject<T>): PromptTemplate<T>
     set: (target, prop, value) => {
       // Ensure property assignments affect the original template for key properties
       if (prop === 'persistId' || prop === 'needsSave' || prop === '_executionOptions') {
-        debug('prompt', `Proxy setting property on template: ${String(prop)}=${value}`);
+        // debug('prompt', `Proxy setting property on template: ${String(prop)}=${value}`);
         template[prop] = value;
       }
 
@@ -255,7 +255,7 @@ function makeTemplateCallable<T>(template: TemplateObject<T>): PromptTemplate<T>
     }
   }) as unknown as PromptTemplate<T>;
 
-  debug('prompt', `Created proxy object with template.persistId=${template.persistId}`);
+  // debug('prompt', `Created proxy object with template.persistId=${template.persistId}`);
   return proxy;
 }
 
@@ -366,6 +366,14 @@ export function createTemplate<T = any>(
     },
 
     render(variables: PromptVariables = {}): string {
+      // Defensive check for variable type - provide helpful error for flows
+      if (variables !== null && typeof variables !== 'object') {
+        throw new Error(
+          `Invalid input: Expected an object with properties, but received ${typeof variables}. ` +
+          `If you're using this in a flow, make sure to transform string inputs to {text: string}.`
+        );
+      }
+      
       return segments.map(segment => {
         if (typeof segment === 'string') {
           return segment;
@@ -447,10 +455,10 @@ export function createTemplate<T = any>(
       const prompt = this.render(variables);
 
       // Log the rendered prompt
-      debug('prompt', "Rendered prompt:");
-      debug('prompt', "```");
-      debug('prompt', prompt);
-      debug('prompt', "```");
+      // debug('prompt', "Rendered prompt:");
+      // debug('prompt', "```");
+      // debug('prompt', prompt);
+      // debug('prompt', "```");
 
       // Determine which model to use
       let modelDef: ModelDefinition;
@@ -531,25 +539,25 @@ export function createTemplate<T = any>(
 
       // Save the prompt if we have a persist ID and need to save
       if (this.persistId && this.needsSave) {
-        debug('persistence', `Auto-saving during execute for prompt "${this.persistId}"`);
+        // debug('persistence', `Auto-saving during execute for prompt "${this.persistId}"`);
 
-        debug('persistence', `Checking persistence status: persistId=${this.persistId}, needsSave=${this.needsSave}`);
-        debug('persistence', `Saving prompt "${this.persistId}" to storage`);
-        debug('persistence', `Saving prompt "${this.persistId}" to storage after execution`);
+        // debug('persistence', `Checking persistence status: persistId=${this.persistId}, needsSave=${this.needsSave}`);
+        // debug('persistence', `Saving prompt "${this.persistId}" to storage`);
+        // debug('persistence', `Saving prompt "${this.persistId}" to storage after execution`);
 
         try {
           // Use await instead of promise.catch for better error handling
           await this.save(this.persistId);
-          debug('persistence', `Successfully saved prompt "${this.persistId}" after execution`);
+          // debug('persistence', `Successfully saved prompt "${this.persistId}" after execution`);
 
           // Only reset the flag after successful saving
           this.needsSave = false;
-          debug('persistence', `Reset needsSave flag to false after successful save`);
+          // debug('persistence', `Reset needsSave flag to false after successful save`);
         } catch (error) {
-          debug('persistence', `Error saving prompt "${this.persistId}":`, error);
-          debug('persistence', `Error saving prompt "${this.persistId}" after execution:`, error);
+          // debug('persistence', `Error saving prompt "${this.persistId}":`, error);
+          // debug('persistence', `Error saving prompt "${this.persistId}" after execution:`, error);
           // Don't reset the needsSave flag on error, so we can try again later
-          debug('persistence', `Keeping needsSave=${this.needsSave} due to save error`);
+          // debug('persistence', `Keeping needsSave=${this.needsSave} due to save error`);
           return formattedResponse as unknown as R; // Return early to avoid resetting needsSave
         }
       }
@@ -622,7 +630,7 @@ export function createTemplate<T = any>(
     clone(): PromptTemplate<T> {
       // Create a deep copy of the template using createTemplateFromBase
       // This is one case where we do want to create a new object
-      debug('prompt', 'Creating a clone of template (new instance, no persistence properties)');
+      // debug('prompt', 'Creating a clone of template (new instance, no persistence properties)');
       return createTemplateFromBase<T>(this, {});
     },
 

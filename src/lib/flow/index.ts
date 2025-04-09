@@ -22,9 +22,17 @@ export function flow<TInput, TOutput>(
       try {
         current = await step(current);
       } catch (error) {
-        // Enhance error with step information
+        // Enhance error with step information and input context
         const enhancedError = error as Error;
-        enhancedError.message = `Error in step ${step.name || 'anonymous'}: ${enhancedError.message}`;
+        const inputType = typeof current;
+        const inputPreview = JSON.stringify(current).substring(0, 100) + 
+                           (JSON.stringify(current).length > 100 ? '...' : '');
+        
+        enhancedError.message = `Error in step ${step.name || 'anonymous'}: ${enhancedError.message}\n` +
+          `Input was type: ${inputType}\n` +
+          `Input preview: ${inputPreview}\n` +
+          `Tip: If using prompt templates in flows, inputs must be objects with named properties.`;
+        
         throw enhancedError;
       }
     }
