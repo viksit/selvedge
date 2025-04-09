@@ -419,11 +419,16 @@ export function createProgram<T = string>(
         // Save the generated code if we have a persist ID and need to save
         if (this.persistId && this.needsSave) {
           debug('persistence', `Saving program "${this.persistId}" to storage`);
-          this.save(this.persistId).catch(error => {
+          try {
+            // Use await to properly wait for the save operation to complete
+            await this.save(this.persistId);
+            debug('persistence', `Successfully saved program "${this.persistId}" to storage`);
+            // Reset the flag after successful save
+            this.needsSave = false;
+          } catch (error) {
             debug('persistence', `Error saving program "${this.persistId}":`, error);
-          });
-          // Reset the flag after saving
-          this.needsSave = false;
+            // Don't reset the needsSave flag if saving failed
+          }
         }
 
         const proxy = createFunctionProxy(String(code));
@@ -458,23 +463,23 @@ export function createProgram<T = string>(
     },
 
     async save(name: string): Promise<ProgramBuilder<T>> {
-      console.log(`--------------- PROGRAM SAVE DEBUG ---------------`);
-      console.log(`Saving program: ${name}`);
-      console.log(`Store base path: ${store.getBasePath()}`);
-      console.log(`Store instance ID: ${(store as any).testId || 'undefined'}`);
+      debug('persistence', `--------------- PROGRAM SAVE DEBUG ---------------`);
+      debug('persistence', `Saving program: ${name}`);
+      debug('persistence', `Store base path: ${store.getBasePath()}`);
+      debug('persistence', `Store instance ID: ${(store as any).testId || 'undefined'}`);
       
       // If we don't have generated code yet, generate it
       if (!this.generatedCode) {
         try {
-          console.log(`No generated code, generating now...`);
+          debug('persistence', `No generated code, generating now...`);
           await this.generate({});
-          console.log(`Code generated successfully`);
+          debug('persistence', `Code generated successfully`);
         } catch (error) {
-          console.log(`Error generating code:`, error);
+          debug('persistence', `Error generating code:`, error);
           debug('program', `Could not pre-generate code for program "${name}". Will store template only.`);
         }
       } else {
-        console.log(`Using existing generated code`);
+        debug('persistence', `Using existing generated code`);
       }
 
       // Prepare data for storage
@@ -488,7 +493,7 @@ export function createProgram<T = string>(
         generatedCode: this.generatedCode
       };
       
-      console.log(`Data prepared for storage, calling store.save...`);
+      debug('persistence', `Data prepared for storage, calling store.save...`);
 
       try {
         // Save to storage

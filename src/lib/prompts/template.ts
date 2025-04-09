@@ -133,6 +133,8 @@ interface TemplateObject<T> {
   _executionOptions?: PromptExecutionOptions;
   [CALLABLE_MARKER]?: boolean;
 
+  [key: string]: any;
+
   render(variables: PromptVariables): string;
   execute<R = T>(variables: PromptVariables, options?: PromptExecutionOptions): Promise<R>;
   returns<R = T>(): PromptTemplate<R>;
@@ -373,7 +375,7 @@ export function createTemplate<T = any>(
           `If you're using this in a flow, make sure to transform string inputs to {text: string}.`
         );
       }
-      
+
       return segments.map(segment => {
         if (typeof segment === 'string') {
           return segment;
@@ -645,7 +647,16 @@ export function createTemplate<T = any>(
       // Create the prefix text
       const prefixText = `Examples:\n${examplesText}\n\nNow, process the following input:`;
 
-      // Add the prefix to this template
+      // Add the // In template.ts, modify the catch block in the render method
+      try {
+        // Existing renderer code
+      } catch (e: any) {
+        // Instead of swallowing errors, propagate them with context
+        const flowError = new Error(`Template rendering error: ${e.message}`);
+        flowError.cause = e; // Preserve original error as cause (ES2022 feature)
+        throw flowError;
+      }
+      //prefix to this template
       return this.prefix(prefixText);
     },
 

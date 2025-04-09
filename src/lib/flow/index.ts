@@ -22,18 +22,35 @@ export function flow<TInput, TOutput>(
       try {
         current = await step(current);
       } catch (error) {
-        // Enhance error with step information and input context
-        const enhancedError = error as Error;
-        const inputType = typeof current;
-        const inputPreview = JSON.stringify(current).substring(0, 100) + 
-                           (JSON.stringify(current).length > 100 ? '...' : '');
-        
-        enhancedError.message = `Error in step ${step.name || 'anonymous'}: ${enhancedError.message}\n` +
-          `Input was type: ${inputType}\n` +
-          `Input preview: ${inputPreview}\n` +
-          `Tip: If using prompt templates in flows, inputs must be objects with named properties.`;
-        
-        throw enhancedError;
+        // // Enhance error with step information and input context
+        // const enhancedError = error as Error;
+        // const inputType = typeof current;
+        // const inputPreview = JSON.stringify(current).substring(0, 100) + 
+        //                    (JSON.stringify(current).length > 100 ? '...' : '');
+
+        // enhancedError.message = `Error in step ${step.name || 'anonymous'}: ${enhancedError.message}\n` +
+        //   `Input was type: ${inputType}\n` +
+        //   `Input preview: ${inputPreview}\n` +
+        //   `Tip: If using prompt templates in flows, inputs must be objects with named properties.`;
+
+        // throw enhancedError;
+        // Safe stringification with fallback
+        if (current == null || current === undefined) {
+          current = 'null or undefined';
+        }
+        else {
+          try {
+            current = JSON.stringify(current).slice(0, 100);
+          } catch {
+            current = String(current).slice(0, 100);
+          }
+        }
+        const inputPreview = current;
+        throw new Error(
+          `Flow stopped: Error in ${step.name || 'anonymous step'}\n` +
+          `${(error as Error).message}\n` +
+          `Input: ${inputPreview}`
+        );
       }
     }
 
