@@ -1,7 +1,7 @@
 import { selvedge } from '../src';
 
 // Enable debug logging for program and persistence namespaces
-selvedge.debug('program,persistence');
+//selvedge.debug('program,persistence');
 
 // Register models with aliases
 selvedge.models({

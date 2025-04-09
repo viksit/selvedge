@@ -1,5 +1,5 @@
 import { selvedge } from '../src';
-selvedge.debug('*');
+// selvedge.debug('*');
 
 // Sample product pages HTML
 const productPage1 = `
