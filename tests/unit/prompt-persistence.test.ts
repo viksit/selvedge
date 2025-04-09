@@ -91,68 +91,109 @@ describe('Prompt Persistence', () => {
   });
   
   it('should save prompts to storage', async () => {
-    // Create a simple prompt template
+    // Create a simple prompt template with a unique ID to avoid conflicts
+    const uniqueId = `test-save-prompt-${Date.now()}`;
     const prompt = selvedge.prompt`This is a test prompt with variable ${(v: string) => v}.`;
     
-    // Save the prompt
-    const savedPrompt = await prompt.save('test-save-prompt');
+    // Save the prompt and ensure it completes
+    const savedPrompt = await prompt.save(uniqueId);
+    
+    // Add a small delay to ensure file system operations complete
+    await new Promise(resolve => setTimeout(resolve, 500));
     
     // Check that the prompt was saved
     const items = await store.list('prompt');
-    expect(items).toContain('test-save-prompt');
+    expect(items).toContain(uniqueId);
     
-    // Load the saved prompt
-    const loadedData = await store.load('prompt', 'test-save-prompt');
-    
-    // Check that the loaded data has the correct structure
-    const filteredOriginal = prompt.segments.filter((s: any) => typeof s === 'string');
-    const filteredLoaded = loadedData.segments.filter((s: any) => typeof s === 'string');
-    expect(JSON.stringify(filteredLoaded)).toBe(JSON.stringify(filteredOriginal));
-    
-    // Ensure save returns an object with the same structure
-    expect(savedPrompt.segments).toEqual(prompt.segments);
-    expect(savedPrompt.variables).toEqual(prompt.variables);
+    try {
+      // Load the saved prompt
+      const loadedData = await store.load('prompt', uniqueId);
+      
+      // Check that the loaded data has the correct structure
+      const filteredOriginal = prompt.segments.filter((s: any) => typeof s === 'string');
+      const filteredLoaded = loadedData.segments.filter((s: any) => typeof s === 'string');
+      expect(JSON.stringify(filteredLoaded)).toBe(JSON.stringify(filteredOriginal));
+      
+      // Ensure save returns an object with the same structure
+      expect(savedPrompt.segments).toEqual(prompt.segments);
+      expect(savedPrompt.variables).toEqual(prompt.variables);
+    } catch (error) {
+      console.error(`Failed to load prompt ${uniqueId}:`, error);
+      console.log('Available prompts:', items);
+      throw error;
+    }
   });
   
   it('should load prompts from storage during execute', async () => {
+    // Create a unique ID for this test
+    const uniqueId = `load-test-prompt-${Date.now()}`;
+    
     // Create and save a prompt
     const originalPrompt = selvedge.prompt`Loading test with ${(v1: string) => v1} and ${(v2: string) => v2}.`;
-    await originalPrompt.save('load-test-prompt');
+    await originalPrompt.save(uniqueId);
+    
+    // Add a small delay to ensure file system operations complete
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    // Verify the prompt was saved
+    const items = await store.list('prompt');
+    expect(items).toContain(uniqueId);
     
     // Create a new prompt with the same ID but different content
     const newPrompt = selvedge.prompt`Different content with ${(diff: string) => diff}.`;
-    newPrompt.persist('load-test-prompt');
+    newPrompt.persist(uniqueId);
     
-    // Execute the prompt to trigger loading
-    await newPrompt.execute({ different: 'value' }, { model: 'test' });
-    
-    // Check that the prompt was loaded from storage
-    const filteredOriginal = originalPrompt.segments.filter((s: any) => typeof s === 'string');
-    const filteredNew = newPrompt.segments.filter((s: any) => typeof s === 'string');
-    expect(JSON.stringify(filteredNew)).toBe(JSON.stringify(filteredOriginal));
+    try {
+      // Execute the prompt to trigger loading
+      await newPrompt.execute({ different: 'value' }, { model: 'test' });
+      
+      // Add a small delay to ensure loading completes
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Check that the prompt was loaded from storage
+      const filteredOriginal = originalPrompt.segments.filter((s: any) => typeof s === 'string');
+      const filteredNew = newPrompt.segments.filter((s: any) => typeof s === 'string');
+      expect(JSON.stringify(filteredNew)).toBe(JSON.stringify(filteredOriginal));
+    } catch (error) {
+      console.error(`Failed during prompt execution for ${uniqueId}:`, error);
+      console.log('Available prompts:', items);
+      throw error;
+    }
   });
   
   it('should save prompts during execute when persisted', async () => {
+    // Create a unique ID for this test
+    const uniqueId = `execute-test-prompt-${Date.now()}`;
+    
     // Create a prompt and persist it
     const prompt = selvedge.prompt`Execute test with ${(param: string) => param}.`;
-    prompt.persist('execute-test-prompt');
+    prompt.persist(uniqueId);
     
     // Execute the prompt to trigger saving
     await prompt.execute({ param: 'test value' }, { model: 'test' });
     
-    // Add a small delay to ensure the async save operation completes
-    await new Promise(resolve => setTimeout(resolve, 100));
+    // Add a longer delay to ensure the async save operation completes
+    await new Promise(resolve => setTimeout(resolve, 500));
     
-    // Check that the prompt was saved
-    const versions = await store.listVersions('prompt', 'execute-test-prompt');
-    expect(versions.length).toBeGreaterThan(0);
-    
-    // Load the saved prompt
-    const loadedData = await store.load('prompt', 'execute-test-prompt');
-    
-    // Check that the loaded data has the correct structure
-    const filteredOriginal = prompt.segments.filter((s: any) => typeof s === 'string');
-    const filteredLoaded = loadedData.segments.filter((s: any) => typeof s === 'string');
-    expect(JSON.stringify(filteredLoaded)).toBe(JSON.stringify(filteredOriginal));
+    try {
+      // Check that the prompt was saved
+      const items = await store.list('prompt');
+      expect(items).toContain(uniqueId);
+      
+      const versions = await store.listVersions('prompt', uniqueId);
+      expect(versions.length).toBeGreaterThan(0);
+      
+      // Load the saved prompt
+      const loadedData = await store.load('prompt', uniqueId);
+      
+      // Check that the loaded data has the correct structure
+      const filteredOriginal = prompt.segments.filter((s: any) => typeof s === 'string');
+      const filteredLoaded = loadedData.segments.filter((s: any) => typeof s === 'string');
+      expect(JSON.stringify(filteredLoaded)).toBe(JSON.stringify(filteredOriginal));
+    } catch (error) {
+      console.error(`Failed during prompt persistence check for ${uniqueId}:`, error);
+      console.log('Available prompts:', await store.list('prompt'));
+      throw error;
+    }
   });
 });
