@@ -81,7 +81,8 @@ describe('Flow System', () => {
         await testFlow(10);
         expect(false).toBe(true); // Should not reach here
       } catch (error) {
-        expect((error as Error).message).toContain('Error in step anonymous: Test error');
+        expect((error as Error).message).toContain('Flow stopped: Error in anonymous step');
+        expect((error as Error).message).toContain('Test error');
       }
     });
 
