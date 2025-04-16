@@ -15,13 +15,13 @@ async function serveStaticFile(req: Request): Promise<Response | undefined> {
     if (await file.exists()) {
       const contentType =
         filePath.endsWith('.js') ? 'application/javascript' :
-        filePath.endsWith('.css') ? 'text/css' :
-        filePath.endsWith('.json') ? 'application/json' :
-        filePath.endsWith('.html') ? 'text/html' :
-        'text/plain';
+          filePath.endsWith('.css') ? 'text/css' :
+            filePath.endsWith('.json') ? 'application/json' :
+              filePath.endsWith('.html') ? 'text/html' :
+                'text/plain';
       return new Response(file, { headers: { 'Content-Type': contentType } });
     }
-  } catch {}
+  } catch { }
   return undefined;
 }
 
@@ -32,9 +32,16 @@ serve({
     // API placeholder endpoints
     if (url.pathname.startsWith('/api/')) {
       if (url.pathname === '/api/generate' && req.method === 'POST') {
-        // Placeholder: echo back the code
         const body = await req.json();
-        return Response.json({ generated: '// Generated code placeholder', input: body.code });
+        try {
+          // Dynamically import the local selvedge library
+          const selvedge = await import("../dist/index");
+          // Assume selvedge has a 'generate' or similar API; replace as needed
+          const generated = await selvedge.default?.generate(body.code);
+          return Response.json({ generated, input: body.code });
+        } catch (e) {
+          return Response.json({ generated: `// Error: ${e.message || e}`, input: body.code });
+        }
       }
       if (url.pathname.startsWith('/api/generated/')) {
         // Placeholder: return dummy generated code
