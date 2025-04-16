@@ -13,8 +13,10 @@
     "selvedge": "dist/cli/index.js"
   },
   "scripts": {
-    "playground:start": "bun playground/server.ts",
-    "playground:dev": "bun playground/server.ts",
+    "playground:start": "bun playground/ui/build.ts && bun playground/server.ts",
+    "playground:dev": "bun run playground:ui:watch & bun playground/server.ts",
+    "playground:ui:build": "bun playground/ui/build.ts",
+    "playground:ui:watch": "bun --hot playground/ui/build.ts",
     "build": "bun run build:clean && bun run build:js && bun run build:types && bun run build:cli",
     "build:clean": "rm -rf dist",
     "build:js": "bun build ./src/index.ts --outdir ./dist --target node --minify --tsconfig-paths",
@@ -35,11 +37,12 @@
     "typescript": "^5.0.0"
   },
   "dependencies": {
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
     "@anthropic-ai/sdk": "^0.16.0",
+    "@monaco-editor/react": "^4.7.0",
     "commander": "^11.1.0",
     "openai": "^4.28.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
     "zod": "^3.22.4"
   },
   "peerDependencies": {
