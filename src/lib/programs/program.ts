@@ -191,17 +191,58 @@ export function makeProgramCallable<T>(builder: any): ProgramBuilder<T> {
   // Mark as callable
   (baseFunction as any)[CALLABLE_MARKER] = true;
   
+  // Explicitly set up a getter for generatedCode
+  Object.defineProperty(baseFunction, 'generatedCode', {
+    get: function() {
+      // First check if we have it directly on the baseFunction
+      if (this._generatedCode) {
+        debug('program', 'Returning generatedCode from baseFunction');
+        return this._generatedCode;
+      }
+      
+      // Otherwise check the builder
+      if (builder.generatedCode) {
+        debug('program', 'Returning generatedCode from builder');
+        // Cache it on the baseFunction for future access
+        this._generatedCode = builder.generatedCode;
+        return builder.generatedCode;
+      }
+      
+      debug('program', 'No generatedCode found');
+      return null;
+    },
+    set: function(value) {
+      debug('program', 'Setting generatedCode on baseFunction');
+      this._generatedCode = value;
+    },
+    enumerable: true,
+    configurable: true
+  });
+  
   // Create the proxy
   const proxy = new Proxy(baseFunction, {
     apply: (target, thisArg, args) => {
       return target.apply(thisArg, args);
     },
     get: (target, prop, receiver) => {
-      // Get the property
-      const value = Reflect.get(target, prop, receiver);
+      // Special handling for generatedCode
+      if (prop === 'generatedCode') {
+        return target.generatedCode;
+      }
       
-      // Return the value - methods are already wrapped
-      return value;
+      // First check if the property exists on the target
+      if (prop in target) {
+        return Reflect.get(target, prop, receiver);
+      }
+      
+      // If not found on target, check the original builder
+      // This ensures dynamic properties are accessible
+      if (prop in builder) {
+        return builder[prop];
+      }
+      
+      // Return the value from target as fallback
+      return Reflect.get(target, prop, receiver);
     }
   }) as ProgramBuilder<T>;
   
@@ -411,6 +452,13 @@ export function createProgram<T = string>(
         // Store the generated code for future use
         this.generatedCode = String(code) as unknown as typeof this.generatedCode;
         
+        // Also set it directly on the baseFunction to ensure it's accessible through the proxy
+        // This is a workaround for the proxy not accessing the original builder's properties
+        if (typeof this === 'function') {
+          debug('program', 'Setting generatedCode directly on callable function');
+          (this as any).generatedCode = String(code);
+        }
+        
         // Try to extract function name for better logging
         const functionNameMatch = String(code).match(/function\s+([a-zA-Z0-9_]+)/);
         const functionName = functionNameMatch ? functionNameMatch[1] : 'anonymous';
@@ -524,6 +572,16 @@ export function createProgram<T = string>(
   };
 
   // Options method is already added to the builder object
+  
+  // Add a getter method for generatedCode to ensure it's accessible
+  Object.defineProperty(builder, 'getGeneratedCode', {
+    value: function() {
+      debug('program', `getGeneratedCode called, code exists: ${this.generatedCode ? 'yes' : 'no'}`);
+      return this.generatedCode;
+    },
+    enumerable: true,
+    configurable: true
+  });
   
   // Store the execution options on the builder
   (builder as any)._executionOptions = _executionOptions;
