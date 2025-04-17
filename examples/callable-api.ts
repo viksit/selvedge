@@ -64,7 +64,9 @@ async function main() {
   console.log("Flow result:", flowResult);
 
   // Example 4: Debug functionality
-  console.log('\nExample 4: Debug functionality');
+  console.log('\nExample 4: Debug context preservation');
+
+  // Create a program with debug enabled
   const emailValidator = selvedge.program`
     /**
      * Create a function that validates email addresses according to RFC 5322.
@@ -77,18 +79,31 @@ async function main() {
       showIterations: true,  // See intermediate results if multiple generations
       explanations: true     // Get explanations of why code was generated this way
     })
-    .returns<(email: string) => boolean>()
-    .using("gpt4");
+    .returns<(email: string) => boolean>();
 
-  // Call the function to generate the code
-  const isValid = await emailValidator("test@example.com");
+  // Chain additional methods to demonstrate debug context preservation
+  const emailValidatorWithModel = emailValidator
+    .using('gpt4')
+    .options({ temperature: 0.2 })
+    .persist('email-validator-debug');
+
+  // Verify debug context is preserved
+  console.log('Debug config preserved?',
+    emailValidatorWithModel._debugConfig?.showPrompt === true &&
+    emailValidatorWithModel._debugConfig?.showIterations === true &&
+    emailValidatorWithModel._debugConfig?.explanations === true
+  );
+
+  console.log('Debug config:', emailValidatorWithModel._debugConfig);
+  console.log('Execution options:', emailValidatorWithModel._executionOptions);
+  console.log('Persist ID:', emailValidatorWithModel.persistId);
+
+  // Uncomment to actually run the model (requires API key)
+  const isValid = await emailValidatorWithModel("test@example.com");
   console.log("Email is valid:", isValid);
-  
-  // Access debug information after execution
-  console.log('\nDebug information:');
-  console.log('Explanation:', emailValidator.explanation);
-  console.log('Iterations:', emailValidator.iterations?.length);
-  console.log('Final prompt (first 100 chars):', emailValidator.finalPrompt?.substring(0, 100) + '...');
+  console.log('Explanation:', emailValidatorWithModel.explanation);
+  console.log('Iterations:', emailValidatorWithModel.iterations?.length);
+  console.log('Final prompt (first 100 chars):', emailValidatorWithModel.finalPrompt?.substring(0, 100) + '...');
 }
 
 main().catch(console.error);
