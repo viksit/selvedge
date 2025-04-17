@@ -94,27 +94,30 @@ describe('Program Generation', () => {
     expect(program.exampleList.length).toBe(0);
   });
 
-  it('should add examples to a program', () => {
+  it('should add examples using the examples method with structured input', () => {
     const program = selvedge.program`Generate a function that ${(task: string) => task}`
-      .withExamples([
+      .examples([
         {
-          input: { task: 'sorts an array' },
+          input: 'sorts an array',
           output: 'function sortArray(arr) {\n  return [...arr].sort();\n}'
         }
       ]);
 
     expect(program.exampleList.length).toBe(1);
-    expect(program.exampleList[0].input.task).toBe('sorts an array');
+    expect(program.exampleList[0].input).toBe('sorts an array');
   });
 
-  it('should add examples using the examples method', () => {
+  it('should add examples using the examples method with simple format', () => {
     const program = selvedge.program`Generate a function that sorts an array`
-      .examples({
-        "sort numbers": "function sortNumbers(arr) {\n  return [...arr].sort((a, b) => a - b);\n}"
-      });
+      .examples([
+        {
+          input: "sort numbers",
+          output: "function sortNumbers(arr) {\n  return [...arr].sort((a, b) => a - b);\n}"
+        }
+      ]);
 
     expect(program.exampleList.length).toBe(1);
-    expect(program.exampleList[0].input.input).toBe('sort numbers');
+    expect(program.exampleList[0].input).toBe('sort numbers');
   });
 
   it('should generate code using the mock adapter', async () => {

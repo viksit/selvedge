@@ -142,7 +142,7 @@ export function makeProgramCallable<T>(builder: any): ProgramBuilder<T> {
   // Create a base function that will be our callable builder
   const baseFunction = async function (...args: any[]) {
     // When called as a function, build the program and then call it with the provided arguments
-    const func = await builder.build({}, builder._executionOptions || {});
+    const func = await builder._build({}, builder._executionOptions || {});
 
     // Call the generated function with the provided arguments
     const result = func.apply(null, args);
@@ -287,23 +287,15 @@ export function createProgram<T = string>(
       return makeProgramCallable(newBuilder);
     },
 
-    withExamples(newExamples: ProgramExample[]): ProgramBuilder<T> {
+    /**
+     * Add examples for few-shot learning
+     * @param examples Array of input-output pairs
+     */
+    examples(examples: ProgramExample[]): ProgramBuilder<T> {
       // Create a new builder with the updated examples
       const newBuilder = { ...this } as unknown as ProgramBuilder<T>;
-      newBuilder.exampleList = [...exampleList, ...newExamples];
+      newBuilder.exampleList = [...exampleList, ...examples];
       return makeProgramCallable(newBuilder);
-    },
-
-    examples(inputOutputMap: Record<string, any>): ProgramBuilder<T> {
-      // Convert the input-output map to ProgramExample array
-      const newExamples: ProgramExample[] = Object.entries(inputOutputMap).map(([input, output]) => ({
-        input: { input },
-        output: typeof output === 'string' ? output : JSON.stringify(output, null, 2)
-      }));
-
-      // Create a new builder with the updated examples
-      return this.withExamples(newExamples);
-      // Note: No need to wrap with makeProgramCallable here since withExamples already does it
     },
 
     using(model: ModelDefinition | string): ProgramBuilder<T> {

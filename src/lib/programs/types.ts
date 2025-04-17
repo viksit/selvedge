@@ -36,14 +36,10 @@ export type ProgramVariables = Record<string, any>;
  * A program example for few-shot learning
  */
 export interface ProgramExample {
-  /** Input variables for this example */
-  input: ProgramVariables;
-
-  /** Expected output code for this example */
+  /** Input for the example */
+  input: any;
+  /** Expected output (code) for the example */
   output: string;
-
-  /** Optional explanation of the example */
-  explanation?: string;
 }
 
 /**
@@ -83,11 +79,8 @@ export interface ProgramBuilder<T = string> {
   /** Final prompt sent to the LLM (when debug with showPrompt is enabled) */
   finalPrompt?: string;
 
-  /** Add examples to the program builder */
-  withExamples(examples: ProgramExample[]): ProgramBuilder<T>;
-
-  /** Add examples using a simpler input-output format */
-  examples(inputOutputMap: Record<string, any>): ProgramBuilder<T>;
+  /** Add examples for few-shot learning */
+  examples(examples: ProgramExample[]): ProgramBuilder<T>;
 
   /** Specify the model to use for generation */
   using(model: ModelDefinition | string): ProgramBuilder<T>;
@@ -99,7 +92,7 @@ export interface ProgramBuilder<T = string> {
    * Execute the generated function with the given variables
    * Returns a proxy that allows direct function calls
    */
-  build(variables?: ProgramVariables, options?: ProgramExecutionOptions): Promise<any>;
+  _build(variables?: ProgramVariables, options?: ProgramExecutionOptions): Promise<any>;
 
   /** Specify the return type of the program */
   returns<R>(): ProgramBuilder<R>;
