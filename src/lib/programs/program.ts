@@ -2,20 +2,64 @@
  * Program generation implementation
  */
 import { ProgramBuilder, ProgramExample, ProgramVariables, ProgramExecutionOptions } from './types';
-
-/**
- * Symbol used to mark a program builder as already callable
- */
-const CALLABLE_MARKER = Symbol('callable');
-import { createTemplate } from '../prompts/template';
-import { ModelRegistry } from '../models';
 import { ModelDefinition, ModelProvider } from '../types';
+import { ModelRegistry } from '../models';
+import { createTemplate } from '../prompts/template';
+import { store } from '../storage';
+import { debug as debugLog } from '../utils/debug';
 import * as ts from 'typescript';
 import * as vm from 'vm';
 import * as path from 'path';
 import * as fs from 'fs/promises';
-import { store } from '../storage';
-import { debug as debugLog } from '../utils/debug';
+
+// Symbol to mark a function as callable
+const CALLABLE_MARKER = Symbol('callable');
+
+// Symbol for internal state management
+const INTERNAL_STATE = Symbol('internalState');
+
+// Define a type for the internal state to ensure type safety
+interface InternalBuilderState<T> {
+  _debugConfig?: { showPrompt?: boolean; showIterations?: boolean; explanations?: boolean };
+  _executionOptions?: ProgramExecutionOptions;
+  persistId?: string;
+  needsSave?: boolean;
+  explanation?: string;
+  iterations?: any[];
+  finalPrompt?: string;
+  generatedCode?: string;
+  // Add any other state properties that need to be preserved
+}
+
+// Helper function to initialize or get internal state
+function getInternalState<T>(builder: any): InternalBuilderState<T> {
+  if (!builder[INTERNAL_STATE]) {
+    builder[INTERNAL_STATE] = {
+      _debugConfig: builder._debugConfig || {},
+      _executionOptions: builder._executionOptions || {},
+      persistId: builder.persistId,
+      needsSave: builder.needsSave || false,
+      explanation: builder.explanation,
+      iterations: builder.iterations,
+      finalPrompt: builder.finalPrompt,
+      generatedCode: builder.generatedCode
+    };
+  }
+  return builder[INTERNAL_STATE] as InternalBuilderState<T>;
+}
+
+// Helper function to update internal state
+function updateInternalState<T>(builder: any, updates: Partial<InternalBuilderState<T>>): void {
+  const state = getInternalState<T>(builder);
+  builder[INTERNAL_STATE] = { ...state, ...updates };
+  
+  // Also update direct properties for backward compatibility
+  Object.keys(updates).forEach(key => {
+    if (key in builder) {
+      (builder as any)[key] = (updates as any)[key];
+    }
+  });
+}
 
 /**
  * Compiles and evaluates TypeScript code, preserving type information
