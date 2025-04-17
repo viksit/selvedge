@@ -251,20 +251,6 @@ export function createProgram<T = string>(
     persistId: undefined as string | undefined,
     needsSave: false,
 
-    /**
-     * Enable debug mode for this program builder.
-     * Returns a new builder with debug config attached.
-     */
-    debug(config: { showPrompt?: boolean; showIterations?: boolean; explanations?: boolean }): ProgramBuilder<T> {
-      const newBuilder = { ...this };
-      newBuilder._debugConfig = { ...config };
-      // Reset debug info on new builder
-      newBuilder.explanation = undefined;
-      newBuilder.iterations = undefined;
-      newBuilder.finalPrompt = undefined;
-      return makeProgramCallable(newBuilder);
-    },
-
     options(opts: ProgramExecutionOptions): ProgramBuilder<T> {
       // Create a new builder with the updated options
       const newBuilder = { ...this } as unknown as ProgramBuilder<T>;
@@ -294,7 +280,7 @@ export function createProgram<T = string>(
     examples(examples: ProgramExample[]): ProgramBuilder<T> {
       // Create a new builder with the updated examples
       const newBuilder = { ...this } as unknown as ProgramBuilder<T>;
-      newBuilder.exampleList = [...exampleList, ...examples];
+      newBuilder.exampleList = [...(this.exampleList || []), ...examples];
       return makeProgramCallable(newBuilder);
     },
 

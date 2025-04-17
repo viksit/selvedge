@@ -70,6 +70,9 @@ export interface ProgramBuilder<T = string> {
   /** Debug configuration */
   _debugConfig?: { showPrompt?: boolean; showIterations?: boolean; explanations?: boolean };
 
+  /** Execution options for the program */
+  _executionOptions?: ProgramExecutionOptions;
+
   /** Explanation of the generated code (when debug with explanations is enabled) */
   explanation?: string;
 
