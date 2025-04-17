@@ -183,10 +183,13 @@ export function makeProgramCallable<T>(builder: any): ProgramBuilder<T> {
     return builder as ProgramBuilder<T>;
   }
 
+  // Initialize or get internal state
+  const internalState = getInternalState<T>(builder);
+
   // Create a base function that will be our callable builder
   const baseFunction = async function (...args: any[]) {
     // When called as a function, build the program and then call it with the provided arguments
-    const func = await builder._build({}, builder._executionOptions || {});
+    const func = await builder._build({}, internalState._executionOptions || {});
 
     // Call the generated function with the provided arguments
     const result = func.apply(null, args);
@@ -195,33 +198,59 @@ export function makeProgramCallable<T>(builder: any): ProgramBuilder<T> {
     return result instanceof Promise ? result : Promise.resolve(result);
   };
 
-  // First, directly wrap all method properties that should return program builders
-  // This is the critical part - methods must be wrapped BEFORE they're copied to the base function
-  const methodsThatReturnBuilder = ['withExamples', 'examples', 'using', 'options', 'returns', 'persist', 'save', 'debug'];
+  // Methods that should return a new builder instance
+  const methodsThatReturnBuilder = ['examples', 'using', 'options', 'returns', 'debug'];
+  
+  // Methods that should return the same builder instance (for chaining)
+  const methodsThatReturnSameBuilder = ['persist', 'save'];
+  
+  // Wrap all methods
   const wrappedMethods: Record<string, Function> = {};
 
+  // Wrap methods that return a new builder
   methodsThatReturnBuilder.forEach(methodName => {
     const originalMethod = builder[methodName];
     if (typeof originalMethod === 'function') {
       wrappedMethods[methodName] = function (...args: any[]) {
+        // Call the original method
         const result = originalMethod.apply(builder, args);
-
-        // For persist and save methods, return the proxy itself to maintain object identity
-        if (methodName === 'persist' || methodName === 'save') {
-          // The actual work is done inside the method, we just need to return the proxy
-          return proxy; // This will be defined later, but JavaScript hoisting makes it work
-        }
-
-        // For other methods, always ensure the result is callable
+        
+        // Ensure internal state is preserved
         if (result && typeof result === 'object') {
+          // Transfer the internal state to the new builder
+          updateInternalState<T>(result, getInternalState<T>(builder));
           return makeProgramCallable(result);
         }
+        
         return result;
       };
     }
   });
 
-  // Now copy all properties from the builder to the function, using our wrapped methods
+  // Wrap methods that return the same builder
+  methodsThatReturnSameBuilder.forEach(methodName => {
+    const originalMethod = builder[methodName];
+    if (typeof originalMethod === 'function') {
+      wrappedMethods[methodName] = function (...args: any[]) {
+        // Call the original method
+        originalMethod.apply(builder, args);
+        
+        // For persist method, make sure the internal state is properly updated on the proxy
+        if (methodName === 'persist' && args.length > 0) {
+          const id = args[0];
+          // Update the internal state on the proxy directly
+          const state = getInternalState<T>(baseFunction);
+          state.persistId = id;
+          state.needsSave = true;
+        }
+        
+        // Return the proxy itself to maintain object identity
+        return proxy;
+      };
+    }
+  });
+
+  // Copy all properties from the builder to the function
   Object.getOwnPropertyNames(builder).forEach(prop => {
     if (prop !== 'constructor') {
       if (prop in wrappedMethods) {
@@ -234,6 +263,9 @@ export function makeProgramCallable<T>(builder: any): ProgramBuilder<T> {
 
   // Mark as callable
   (baseFunction as any)[CALLABLE_MARKER] = true;
+  
+  // Store internal state on the base function
+  (baseFunction as any)[INTERNAL_STATE] = internalState;
 
   // Create the proxy
   const proxy = new Proxy(baseFunction, {
@@ -241,24 +273,76 @@ export function makeProgramCallable<T>(builder: any): ProgramBuilder<T> {
       return target.apply(thisArg, args);
     },
     get: (target, prop, receiver) => {
-      // Get the property
+      // Special handling for debug properties and state properties
+      if (typeof prop === 'string') {
+        // Define all properties that should be accessible from internal state
+        const stateProps = [
+          '_debugConfig', '_executionOptions', 'persistId', 
+          'needsSave', 'explanation', 'iterations', 'finalPrompt'
+        ];
+        
+        if (stateProps.includes(prop)) {
+          // Get from internal state if available
+          const state = getInternalState<T>(target);
+          if (state && prop in state) {
+            return state[prop as keyof InternalBuilderState<T>];
+          }
+        }
+        
+        // Special handling for debug properties that might be set during execution
+        const debugProps = ['explanation', 'iterations', 'finalPrompt'];
+        if (debugProps.includes(prop)) {
+          // If it's not in the state but is a debug property, check if it's on the target
+          const value = Reflect.get(target, prop, receiver);
+          if (value !== undefined) {
+            return value;
+          }
+        }
+      }
+      
+      // Get the property from the target
       const value = Reflect.get(target, prop, receiver);
 
-      // Return the value - methods are already wrapped
-      return value;
-    }
-  }) as ProgramBuilder<T>;
+      // If the property is a function, bind it to the target
+      if (typeof value === 'function' && prop !== 'constructor') {
+        return function (...args: any[]) {
+          return value.apply(target, args);
+        };
+      }
 
-  return proxy;
+      return value;
+    },
+    set: (target, prop, value, receiver) => {
+      // Special handling for debug properties and state properties
+      if (typeof prop === 'string') {
+        const stateProps = [
+          '_debugConfig', '_executionOptions', 'persistId', 
+          'needsSave', 'explanation', 'iterations', 'finalPrompt'
+        ];
+        
+        if (stateProps.includes(prop)) {
+          // Update internal state
+          const state = getInternalState<T>(target);
+          (state as any)[prop] = value;
+          
+          // Also set on target for backward compatibility
+          Reflect.set(target, prop, value, receiver);
+          return true;
+        }
+      }
+      
+      // Default behavior
+      return Reflect.set(target, prop, value, receiver);
+    }
+  });
+
+  return proxy as ProgramBuilder<T>;
 }
 
 /**
  * Create a new program builder
  */
-export function createProgram<T = string>(
-  strings: TemplateStringsArray,
-  values: any[]
-): ProgramBuilder<T> {
+export function createProgram<T = any>(strings: TemplateStringsArray, ...values: any[]): ProgramBuilder<T> {
   debugLog('program', 'createProgram called with template string');
   // Create the underlying prompt template
   const template = createTemplate(strings, values);
@@ -307,13 +391,18 @@ export function createProgram<T = string>(
      */
     debug(config: { showPrompt?: boolean; showIterations?: boolean; explanations?: boolean }): ProgramBuilder<T> {
       debugLog('program', 'Debug enabled with config:', config);
+      
       // Create a new builder with the updated debug config
       const newBuilder = { ...this } as unknown as ProgramBuilder<T>;
-      newBuilder._debugConfig = { ...config };
-      // Reset debug info on new builder
-      newBuilder.explanation = undefined;
-      newBuilder.iterations = undefined;
-      newBuilder.finalPrompt = undefined;
+      
+      // Update internal state with debug config
+      updateInternalState<T>(newBuilder, {
+        _debugConfig: { ...config },
+        explanation: undefined,
+        iterations: undefined,
+        finalPrompt: undefined
+      });
+      
       return makeProgramCallable(newBuilder);
     },
 
@@ -350,23 +439,41 @@ export function createProgram<T = string>(
     },
 
     async _generate(variables: ProgramVariables = {}, options: ProgramExecutionOptions = {}): Promise<T> {
+      // Get internal state
+      const internalState = getInternalState<T>(this);
+      
       // Reset debug info at the start of each generation
+      updateInternalState<T>(this, {
+        explanation: undefined,
+        iterations: undefined,
+        finalPrompt: undefined
+      });
+      
+      // Also reset on the object itself for backward compatibility
       this.explanation = undefined;
       this.iterations = undefined;
       this.finalPrompt = undefined;
 
       // If debug is enabled, collect debug info
-      if (this._debugConfig) {
-        if (this._debugConfig.showPrompt) {
+      if (internalState._debugConfig) {
+        if (internalState._debugConfig.showPrompt) {
           try {
-            this.finalPrompt = this.template.render(variables);
+            const promptText = this.template.render(variables);
+            // Update both internal state and the object itself
+            updateInternalState<T>(this, { finalPrompt: promptText });
+            this.finalPrompt = promptText;
           } catch {
+            // Update both internal state and the object itself
+            updateInternalState<T>(this, { finalPrompt: '(error rendering prompt)' });
             this.finalPrompt = '(error rendering prompt)';
           }
         }
 
-        if (this._debugConfig.showIterations) {
-          this.iterations = [];
+        if (internalState._debugConfig.showIterations) {
+          // Update both internal state and the object itself
+          const iterations: any[] = [];
+          updateInternalState<T>(this, { iterations });
+          this.iterations = iterations;
         }
       }
 
@@ -439,24 +546,34 @@ export function createProgram<T = string>(
       this.generatedCode = String(codeResponse) as unknown as typeof this.generatedCode;
 
       // Store the explanation if requested
-      if (this._debugConfig?.explanations) {
+      // Use the already defined internalState from above
+      if (internalState._debugConfig?.explanations) {
         // Try to extract explanation from the response
         const fullResponse = response.toString();
         const codeString = String(codeResponse);
 
         // If the response contains more than just the code, use that as the explanation
+        let explanation;
         if (fullResponse.length > codeString.length) {
-          this.explanation = fullResponse.replace(codeString, '').trim();
+          explanation = fullResponse.replace(codeString, '').trim();
         } else {
-          this.explanation = 'No explanation provided by the model.';
+          explanation = 'No explanation provided by the model.';
         }
+        
+        // Update both internal state and the object itself
+        updateInternalState<T>(this, { explanation });
+        this.explanation = explanation;
       }
 
       // Store iteration if requested
-      if (this._debugConfig?.showIterations) {
+      if (internalState._debugConfig?.showIterations) {
         // For now, just store the final result as the only iteration
         // In the future, we could implement multiple generation attempts
-        this.iterations = [{ code: String(codeResponse) }];
+        const iterations = [{ code: String(codeResponse) }];
+        
+        // Update both internal state and the object itself
+        updateInternalState<T>(this, { iterations });
+        this.iterations = iterations;
       }
 
       // Log basic information about the generated code
@@ -468,27 +585,93 @@ export function createProgram<T = string>(
 
     async _build(variables: ProgramVariables = {}, options: ProgramExecutionOptions = {}): Promise<any> {
       try {
+        // Get internal state
+        const internalState = getInternalState<T>(this);
+        
         // If we have a persist ID but no generated code yet, try to load it first
-        if (this.persistId && !this.generatedCode && !options.forceRegenerate) {
+        if (internalState.persistId && !this.generatedCode && !options.forceRegenerate) {
           try {
-            const existingProgram = await store.load('program', this.persistId);
+            const existingProgram = await store.load('program', internalState.persistId);
             if (existingProgram && existingProgram.generatedCode) {
+              // Update both the direct property and internal state
               this.generatedCode = existingProgram.generatedCode;
-              debugLog('persistence', `Loaded existing code from program "${this.persistId}"`);
-              this.needsSave = false; // Don't need to save if we loaded existing code
+              updateInternalState<T>(this, {
+                generatedCode: existingProgram.generatedCode,
+                needsSave: false // Don't need to save if we loaded existing code
+              });
+              
+              // Set debug properties for loaded programs
+              if (internalState._debugConfig) {
+                // Set finalPrompt if debug is enabled and showPrompt is true
+                if (internalState._debugConfig.showPrompt) {
+                  try {
+                    const promptText = this.template.render(variables);
+                    this.finalPrompt = promptText;
+                    updateInternalState<T>(this, { finalPrompt: promptText });
+                  } catch {
+                    this.finalPrompt = '(error rendering prompt for loaded program)';
+                    updateInternalState<T>(this, { finalPrompt: '(error rendering prompt for loaded program)' });
+                  }
+                }
+                
+                // Set iterations if debug is enabled and showIterations is true
+                if (internalState._debugConfig.showIterations) {
+                  const iterations = [{ code: String(existingProgram.generatedCode) }];
+                  this.iterations = iterations;
+                  updateInternalState<T>(this, { iterations });
+                }
+                
+                // Set explanation if debug is enabled and explanations is true
+                if (internalState._debugConfig.explanations) {
+                  const explanation = 'Explanation not available for loaded program';
+                  this.explanation = explanation;
+                  updateInternalState<T>(this, { explanation });
+                }
+              }
+              
+              debugLog('persistence', `Loaded existing code from program "${internalState.persistId}"`);
             } else {
-              this.needsSave = true; // Need to save if we couldn't load existing code
+              // Need to save if we couldn't load existing code
+              updateInternalState<T>(this, { needsSave: true });
             }
           } catch (error) {
             // If loading fails, we'll generate new code below
-            debugLog('persistence', `No existing program "${this.persistId}" found or error loading it`);
-            this.needsSave = true; // Need to save if we couldn't load existing code
+            debugLog('persistence', `No existing program "${internalState.persistId}" found or error loading it`);
+            updateInternalState<T>(this, { needsSave: true }); // Need to save if we couldn't load existing code
           }
         }
 
         // If we already have generated code and aren't forcing regeneration, use it directly
         if (this.generatedCode && !options.forceRegenerate) {
           debugLog('program', "Using existing generated code - no LLM call needed");
+          
+          // Make sure debug properties are set even when using existing code
+          if (internalState._debugConfig) {
+            // Only set these if they're not already set
+            if (internalState._debugConfig.showPrompt && !this.finalPrompt) {
+              try {
+                const promptText = this.template.render(variables);
+                this.finalPrompt = promptText;
+                updateInternalState<T>(this, { finalPrompt: promptText });
+              } catch {
+                this.finalPrompt = '(error rendering prompt for existing code)';
+                updateInternalState<T>(this, { finalPrompt: '(error rendering prompt for existing code)' });
+              }
+            }
+            
+            if (internalState._debugConfig.showIterations && !this.iterations) {
+              const iterations = [{ code: String(this.generatedCode) }];
+              this.iterations = iterations;
+              updateInternalState<T>(this, { iterations });
+            }
+            
+            if (internalState._debugConfig.explanations && !this.explanation) {
+              const explanation = 'Explanation not available for existing code';
+              this.explanation = explanation;
+              updateInternalState<T>(this, { explanation });
+            }
+          }
+          
           const proxy = createFunctionProxy(String(this.generatedCode));
           return proxy;
         }
@@ -496,10 +679,10 @@ export function createProgram<T = string>(
         // Log if we're forcing regeneration
         if (options.forceRegenerate) {
           debugLog('program', "forceRegenerate option is true - regenerating code");
-          this.needsSave = true; // Need to save if we're forcing regeneration
+          updateInternalState<T>(this, { needsSave: true }); // Need to save if we're forcing regeneration
         } else if (!this.generatedCode) {
           debugLog('program', "No cached code found - generating for the first time");
-          this.needsSave = true; // Need to save if we're generating for the first time
+          updateInternalState<T>(this, { needsSave: true }); // Need to save if we're generating for the first time
         }
 
         // Debug the model information
@@ -519,16 +702,17 @@ export function createProgram<T = string>(
         debugLog('program', `Generated function: ${functionName}`);
 
         // Save the generated code if we have a persist ID and need to save
-        if (this.persistId && this.needsSave) {
-          debugLog('persistence', `Saving program "${this.persistId}" to storage`);
+        // Use the already defined internalState from above
+        if (internalState.persistId && internalState.needsSave) {
+          debugLog('persistence', `Saving program "${internalState.persistId}" to storage`);
           try {
             // Use await to properly wait for the save operation to complete
-            await this.save(this.persistId);
-            debugLog('persistence', `Successfully saved program "${this.persistId}" to storage`);
+            await this.save(internalState.persistId);
+            debugLog('persistence', `Successfully saved program "${internalState.persistId}" to storage`);
             // Reset the flag after successful save
-            this.needsSave = false;
+            updateInternalState<T>(this, { needsSave: false });
           } catch (error) {
-            debugLog('persistence', `Error saving program "${this.persistId}":`, error);
+            debugLog('persistence', `Error saving program "${internalState.persistId}":`, error);
             // Don't reset the needsSave flag if saving failed
           }
         }
@@ -552,9 +736,11 @@ export function createProgram<T = string>(
     },
 
     persist(id: string): ProgramBuilder<T> {
-      // Store the persist ID
-      this.persistId = id;
-      this.needsSave = true;
+      // Store the persist ID in internal state
+      updateInternalState<T>(this, {
+        persistId: id,
+        needsSave: true
+      });
 
       // For testing purposes - this is checked in tests
       debugLog('program', `Program "${id}" has been persisted for later use`);
@@ -565,6 +751,9 @@ export function createProgram<T = string>(
     },
 
     async save(name: string): Promise<ProgramBuilder<T>> {
+      // Get internal state - we'll use this later for updating state
+      getInternalState<T>(this);
+      
       debugLog('persistence', `--------------- PROGRAM SAVE DEBUG ---------------`);
       debugLog('persistence', `Saving program: ${name}`);
       debugLog('persistence', `Store base path: ${store.getBasePath()}`);
@@ -598,9 +787,15 @@ export function createProgram<T = string>(
       debugLog('persistence', `Data prepared for storage, calling store.save...`);
 
       try {
-        // Save to storage
+        // Save to storage - only do this once
         const versionId = await store.save('program', name, data);
         console.log(`Program saved with version ID: ${versionId}`);
+
+        // Update internal state with the new persistId and reset needsSave flag
+        updateInternalState<T>(this, {
+          persistId: name,
+          needsSave: false
+        });
 
         // Verify the program exists after saving
         const programDir = path.join(store.getBasePath(), 'programs', name);
@@ -611,17 +806,14 @@ export function createProgram<T = string>(
           const files = await fs.readdir(programDir);
           console.log(`Files in program directory:`, files);
         }
+        
+        // Return this for chaining
+        return this as unknown as ProgramBuilder<T>;
       } catch (error) {
         console.log(`Error saving program:`, error);
+        // Don't reset needsSave flag if saving failed
+        throw error; // Propagate the error
       }
-
-      console.log(`-------------------------------------------------`);
-
-      // Save to storage (retry outside try/catch to propagate errors)
-      await store.save('program', name, data);
-
-      // Return this for chaining
-      return this as unknown as ProgramBuilder<T>;
     }
   };
 

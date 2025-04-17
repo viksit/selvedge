@@ -141,4 +141,51 @@ describe('Debug functionality', () => {
     expect(program.explanation).toBeDefined();
     expect(program.explanation).toContain('validates');
   });
+
+  test('debug properties should be preserved with persist and after execution', async () => {
+    // Create a program with debug enabled
+    const program = selvedge.program`
+      /**
+       * Create a simple function that multiplies two numbers.
+       * @param a - First number
+       * @param b - Second number
+       * @returns The product of a and b
+       */
+    `
+      .debug({
+        showPrompt: true,
+        showIterations: true,
+        explanations: true
+      });
+    
+    // Check if debug config is present
+    expect(program._debugConfig).toBeDefined();
+    expect(program._debugConfig?.showPrompt).toBe(true);
+    
+    // Apply a chain of transformations including persist
+    const finalProgram = program
+      .returns<(a: number, b: number) => number>()
+      .using('debug-test')
+      .persist('debug-test-multiply');
+    
+    // Debug config should be preserved through all transformations
+    expect(finalProgram._debugConfig).toBeDefined();
+    expect(finalProgram._debugConfig?.showPrompt).toBe(true);
+    expect(finalProgram._debugConfig?.showIterations).toBe(true);
+    expect(finalProgram._debugConfig?.explanations).toBe(true);
+    
+    // Persist ID should be set correctly
+    expect(finalProgram.persistId).toBe('debug-test-multiply');
+    
+    // Execute the program
+    const result = await finalProgram(3, 4);
+    
+    // Debug properties should be populated after execution
+    expect(finalProgram.finalPrompt).toBeDefined();
+    expect(finalProgram.iterations).toBeDefined();
+    expect(finalProgram.explanation).toBeDefined();
+    
+    // Check that the program works correctly
+    expect(typeof result).toBe('number');
+  });
 });
