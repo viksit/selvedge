@@ -71,6 +71,18 @@ export interface ProgramBuilder<T = string> {
   /** Flag to track if the program needs to be saved */
   needsSave?: boolean;
 
+  /** Debug configuration */
+  _debugConfig?: { showPrompt?: boolean; showIterations?: boolean; explanations?: boolean };
+  
+  /** Explanation of the generated code (when debug with explanations is enabled) */
+  explanation?: string;
+  
+  /** Iterations of code generation (when debug with showIterations is enabled) */
+  iterations?: any[];
+  
+  /** Final prompt sent to the LLM (when debug with showPrompt is enabled) */
+  finalPrompt?: string;
+
   /** Add examples to the program builder */
   withExamples(examples: ProgramExample[]): ProgramBuilder<T>;
 
@@ -94,6 +106,9 @@ export interface ProgramBuilder<T = string> {
 
   /** Set execution options for this program */
   options(opts: ProgramExecutionOptions): ProgramBuilder<T>;
+
+  /** Enable debug mode for this program builder */
+  debug(config: { showPrompt?: boolean; showIterations?: boolean; explanations?: boolean }): ProgramBuilder<T>;
 
   /** Save this program for later use (legacy method) */
   persist(id: string): ProgramBuilder<T>;
