@@ -14,24 +14,24 @@ describe('Program Generation', () => {
   beforeAll(async () => {
     // Use a consistent test directory for all program tests
     const testStorageDir = path.join(os.tmpdir(), 'selvedge-program-tests');
-    
+
     // Add a unique ID to the store instance for debugging
     const storeTestId = Math.random().toString(36).substr(2, 9);
     (store as any).testId = storeTestId;
-    
+
     console.log('--------------- DEBUG INFO ---------------');
     console.log(`Test store ID: ${storeTestId}`);
     console.log(`Test store instance: ${store.constructor.name}`);
     console.log(`Initial base path: ${store.getBasePath()}`);
-    
+
     // Set the storage path before running any tests
     store.setBasePath(testStorageDir);
     console.log(`After setting: base path = ${store.getBasePath()}`);
     console.log('-----------------------------------------');
-    
+
     const programsDir = path.join(testStorageDir, 'programs');
     const promptsDir = path.join(testStorageDir, 'prompts');
-    
+
     try {
       // Create base directory
       await fs.mkdir(testStorageDir, { recursive: true });
@@ -39,18 +39,18 @@ describe('Program Generation', () => {
       await fs.mkdir(programsDir, { recursive: true });
       // Create prompts directory
       await fs.mkdir(promptsDir, { recursive: true });
-      
+
       // Verify directories exist
       const programsExist = await fs.access(programsDir).then(() => true).catch(() => false);
       const promptsExist = await fs.access(promptsDir).then(() => true).catch(() => false);
-      
+
       console.log(`Using test storage directory: ${testStorageDir}`);
       console.log(`Test directories created: programs=${programsExist}, prompts=${promptsExist}`);
     } catch (error) {
       console.error(`Error creating storage directories: ${(error as Error).message}`);
     }
   });
-  
+
   beforeEach(() => {
     // Register a mock model for testing
     selvedge.models({
@@ -121,7 +121,7 @@ describe('Program Generation', () => {
     const program = selvedge.program`Generate a function that ${(task: string) => task}`
       .using('test');
 
-    const code = await program.generate({ task: 'sort array of numbers' });
+    const code = await program._generate({ task: 'sort array of numbers' });
     expect(code).toContain('function sortArray');
     expect(code).toContain('sort((a, b)');
   });
@@ -130,7 +130,7 @@ describe('Program Generation', () => {
     const program = selvedge.program`Generate a function that ${(task: string) => task}`
       .using('test');
 
-    const code = await program.generate({ task: 'capitalizes a string' });
+    const code = await program._generate({ task: 'capitalizes a string' });
     expect(code).toContain('function capitalize');
     expect(code).not.toContain('```');
   });
@@ -153,7 +153,7 @@ describe('Program Generation', () => {
     const program = selvedge.program`Generate a function that ${(task: string) => task}`
       .using('test');
 
-    const result = await program.build({ task: 'add numbers' });
+    const result = await program._build({ task: 'add numbers' });
     expect(result).toBeDefined();
     expect(typeof result).toBe('function');
     expect(typeof result.add).toBe('function');
@@ -166,7 +166,7 @@ describe('Program Generation', () => {
     const program = selvedge.program`Generate ${(task: string) => task}`
       .using('test');
 
-    const result = await program.build({ task: 'math utility functions' });
+    const result = await program._build({ task: 'math utility functions' });
     expect(result).toBeDefined();
     expect(typeof result).toBe('function');
     expect(typeof result.add).toBe('function');
@@ -192,41 +192,41 @@ describe('Program Generation', () => {
     await new Promise(resolve => setTimeout(resolve, 500));
 
     // Pre-generate the code to ensure it's ready when we load
-    await program.generate({ task: 'add numbers' });
+    await program._generate({ task: 'add numbers' });
 
     // Save it directly to ensure it's saved
     await program.save(programName);
-    
+
     // Add a small delay to ensure file system operations complete
     await new Promise(resolve => setTimeout(resolve, 100));
-    
+
     // Verify the program directory exists after saving
     const programsDir = path.join(store.getBasePath(), 'programs');
     const programDir = path.join(programsDir, programName);
-    
+
     const dirExists = await fs.access(programDir).then(() => true).catch(() => false);
     console.log(`Persist test - directory exists: ${dirExists} - ${programDir}`);
-    
+
     if (dirExists) {
       const files = await fs.readdir(programDir);
       console.log(`Persist test - files in directory:`, files);
     } else {
       console.log('WARNING: Program directory was not created during persist+save');
-      
+
       // Create the directory structure explicitly as a fallback
       await fs.mkdir(programDir, { recursive: true });
       console.log(`Created directory explicitly: ${programDir}`);
     }
-    
+
     // Try to load the program to verify it was actually saved
     const loadedProgram = await selvedge.loadProgram(programName);
 
     // Verify the loaded program works
     expect(loadedProgram).toBeDefined();
-    expect(loadedProgram.build).toBeDefined();
+    expect(loadedProgram._build).toBeDefined();
 
     // Execute the loaded program
-    const result = await loadedProgram.build();
+    const result = await loadedProgram._build();
 
     // Verify the result
     expect(result).toBeDefined();
@@ -243,37 +243,37 @@ describe('Program Generation', () => {
       .using('test');
 
     // Pre-generate the code to ensure it's ready when we save
-    await program.generate({ task: 'add numbers' });
+    await program._generate({ task: 'add numbers' });
 
     // Save the program using the proper storage mechanism
     await program.save(programName);
-    
+
     // Add a small delay to ensure file system operations complete
     // This helps avoid race conditions with file system operations
     await new Promise(resolve => setTimeout(resolve, 50));
-    
+
     // Verify the program directory exists after saving
     const programsDir = path.join(store.getBasePath(), 'programs');
     const programDir = path.join(programsDir, programName);
-    
+
     const dirExists = await fs.access(programDir).then(() => true).catch(() => false);
     console.log(`Directory exists before loading: ${dirExists} - ${programDir}`);
-    
+
     if (dirExists) {
       const files = await fs.readdir(programDir);
       console.log(`Files in program directory before loading:`, files);
     }
-    
+
     // Now load the program from storage
     const loadedProgram = await selvedge.loadProgram(programName);
 
     // Verify the loaded program is defined and has the expected properties
     expect(loadedProgram).toBeDefined();
-    expect(loadedProgram.build).toBeDefined();
-    expect(typeof loadedProgram.build).toBe('function');
+    expect(loadedProgram._build).toBeDefined();
+    expect(typeof loadedProgram._build).toBe('function');
 
     // Execute the loaded program
-    const result = await loadedProgram.build();
+    const result = await loadedProgram._build();
 
     // Verify the result works as expected
     expect(result).toBeDefined();
@@ -287,7 +287,7 @@ describe('Program Generation', () => {
       .using('test');
 
     try {
-      await program.generate({ task: 'invalid code' });
+      await program._generate({ task: 'invalid code' });
       // Should not reach here
       expect(true).toBe(false);
     } catch (error) {
@@ -307,7 +307,7 @@ describe('Program Generation', () => {
       .using('test');
 
     try {
-      await program.build();
+      await program._build();
       // Should not reach here if properly handling errors
       expect(true).toBe(false);
     } catch (error) {
@@ -333,7 +333,7 @@ describe('Program Generation', () => {
       .using('test')
       .returns<Person>();
 
-    const result = await program.build();
+    const result = await program._build();
     const person = result.createPerson('John', 30);
 
     expect(person).toHaveProperty('name');
@@ -346,7 +346,7 @@ describe('Program Generation', () => {
     const program = selvedge.program`Generate a function that ${(task: string) => task}`
       .using('test');
 
-    const result = await program.build({ task: 'word frequency counter' });
+    const result = await program._build({ task: 'word frequency counter' });
 
     // Test the function by calling it with a sample text
     const frequencies = result.countWords('This is a test. This is only a test.');
@@ -393,7 +393,7 @@ describe('Program Generation', () => {
     `.using('test');
 
     // Generate the code first
-    await p.generate({ task: 'add numbers' });
+    await p._generate({ task: 'add numbers' });
 
     // Save the program
     await p.save(programName);
@@ -413,7 +413,7 @@ describe('Program Generation', () => {
     }
 
     // Execute the program without regenerating
-    const result = await loadedProgram.build();
+    const result = await loadedProgram._build();
 
     // Verify the result works as expected
     expect(result).toBeDefined();
@@ -436,7 +436,7 @@ describe('Program Generation', () => {
     `.using('test');
 
     // Generate the code first
-    await p.generate({ task: 'add numbers' });
+    await p._generate({ task: 'add numbers' });
 
     // Save the program
     await p.save(programName);
@@ -456,7 +456,7 @@ describe('Program Generation', () => {
     }
 
     // Execute with forceRegenerate option
-    const result = await loadedProgram.build({}, { forceRegenerate: true });
+    const result = await loadedProgram._build({}, { forceRegenerate: true });
 
     // We can't guarantee the code will be different since it's a mock,
     // but we can verify the execute method works

@@ -73,13 +73,13 @@ export interface ProgramBuilder<T = string> {
 
   /** Debug configuration */
   _debugConfig?: { showPrompt?: boolean; showIterations?: boolean; explanations?: boolean };
-  
+
   /** Explanation of the generated code (when debug with explanations is enabled) */
   explanation?: string;
-  
+
   /** Iterations of code generation (when debug with showIterations is enabled) */
   iterations?: any[];
-  
+
   /** Final prompt sent to the LLM (when debug with showPrompt is enabled) */
   finalPrompt?: string;
 
@@ -93,7 +93,7 @@ export interface ProgramBuilder<T = string> {
   using(model: ModelDefinition | string): ProgramBuilder<T>;
 
   /** Generate code with the given variables */
-  generate(variables: ProgramVariables, options?: ProgramExecutionOptions): Promise<T>;
+  _generate(variables: ProgramVariables, options?: ProgramExecutionOptions): Promise<T>;
 
   /** 
    * Execute the generated function with the given variables

@@ -271,7 +271,7 @@ export function createProgram<T = string>(
       newBuilder._executionOptions = { ...this._executionOptions, ...opts };
       return makeProgramCallable(newBuilder);
     },
-    
+
     /**
      * Returns a new builder with debug config attached.
      */
@@ -327,7 +327,7 @@ export function createProgram<T = string>(
       return makeProgramCallable(newBuilder);
     },
 
-    async generate(variables: ProgramVariables = {}, options: ProgramExecutionOptions = {}): Promise<T> {
+    async _generate(variables: ProgramVariables = {}, options: ProgramExecutionOptions = {}): Promise<T> {
       // Reset debug info at the start of each generation
       this.explanation = undefined;
       this.iterations = undefined;
@@ -444,7 +444,7 @@ export function createProgram<T = string>(
       return codeResponse as unknown as T;
     },
 
-    async build(variables: ProgramVariables = {}, options: ProgramExecutionOptions = {}): Promise<any> {
+    async _build(variables: ProgramVariables = {}, options: ProgramExecutionOptions = {}): Promise<any> {
       try {
         // If we have a persist ID but no generated code yet, try to load it first
         if (this.persistId && !this.generatedCode && !options.forceRegenerate) {
@@ -486,7 +486,7 @@ export function createProgram<T = string>(
         debugLog('program', `Using model: ${modelProvider}/${modelName}`);
 
         // Generate the code
-        const code = await this.generate(variables, options);
+        const code = await this._generate(variables, options);
 
         // Store the generated code for future use
         this.generatedCode = String(code) as unknown as typeof this.generatedCode;
@@ -552,7 +552,7 @@ export function createProgram<T = string>(
       if (!this.generatedCode) {
         try {
           debugLog('persistence', `No generated code, generating now...`);
-          await this.generate({});
+          await this._generate({});
           debugLog('persistence', `Code generated successfully`);
         } catch (error) {
           debugLog('persistence', `Error generating code:`, error);
