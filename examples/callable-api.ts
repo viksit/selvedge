@@ -63,6 +63,32 @@ async function main() {
   const flowResult = await simpleFlow({});
   console.log("Flow result:", flowResult);
 
+  // Example 4: Debug functionality
+  console.log('\nExample 4: Debug functionality');
+  const emailValidator = selvedge.program`
+    /**
+     * Create a function that validates email addresses according to RFC 5322.
+     * @param email - The email address to validate
+     * @returns True if the email is valid, false otherwise
+     */
+  `
+    .debug({
+      showPrompt: true,      // See the actual prompt sent to the LLM
+      showIterations: true,  // See intermediate results if multiple generations
+      explanations: true     // Get explanations of why code was generated this way
+    })
+    .returns<(email: string) => boolean>()
+    .using("gpt4");
+
+  // Call the function to generate the code
+  const isValid = await emailValidator("test@example.com");
+  console.log("Email is valid:", isValid);
+  
+  // Access debug information after execution
+  console.log('\nDebug information:');
+  console.log('Explanation:', emailValidator.explanation);
+  console.log('Iterations:', emailValidator.iterations?.length);
+  console.log('Final prompt (first 100 chars):', emailValidator.finalPrompt?.substring(0, 100) + '...');
 }
 
 main().catch(console.error);

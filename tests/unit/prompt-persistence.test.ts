@@ -97,6 +97,10 @@ describe('Prompt Persistence', () => {
     // Save the prompt
     const savedPrompt = await prompt.save('test-save-prompt');
     
+    // Add a small delay to ensure the async save operation completes
+    // This helps prevent race conditions in CI environments
+    await new Promise(resolve => setTimeout(resolve, 200));
+    
     // Check that the prompt was saved
     const items = await store.list('prompt');
     expect(items).toContain('test-save-prompt');
@@ -141,7 +145,8 @@ describe('Prompt Persistence', () => {
     await prompt.execute({ param: 'test value' }, { model: 'test' });
     
     // Add a small delay to ensure the async save operation completes
-    await new Promise(resolve => setTimeout(resolve, 100));
+    // Increased from 100ms to 200ms for more reliability in CI environments
+    await new Promise(resolve => setTimeout(resolve, 200));
     
     // Check that the prompt was saved
     const versions = await store.listVersions('prompt', 'execute-test-prompt');

@@ -36,14 +36,10 @@ export type ProgramVariables = Record<string, any>;
  * A program example for few-shot learning
  */
 export interface ProgramExample {
-  /** Input variables for this example */
-  input: ProgramVariables;
-
-  /** Expected output code for this example */
+  /** Input for the example */
+  input: any;
+  /** Expected output (code) for the example */
   output: string;
-
-  /** Optional explanation of the example */
-  explanation?: string;
 }
 
 /**
@@ -71,29 +67,44 @@ export interface ProgramBuilder<T = string> {
   /** Flag to track if the program needs to be saved */
   needsSave?: boolean;
 
-  /** Add examples to the program builder */
-  withExamples(examples: ProgramExample[]): ProgramBuilder<T>;
+  /** Debug configuration */
+  _debugConfig?: { showPrompt?: boolean; showIterations?: boolean; explanations?: boolean };
 
-  /** Add examples using a simpler input-output format */
-  examples(inputOutputMap: Record<string, any>): ProgramBuilder<T>;
+  /** Execution options for the program */
+  _executionOptions?: ProgramExecutionOptions;
+
+  /** Explanation of the generated code (when debug with explanations is enabled) */
+  explanation?: string;
+
+  /** Iterations of code generation (when debug with showIterations is enabled) */
+  iterations?: any[];
+
+  /** Final prompt sent to the LLM (when debug with showPrompt is enabled) */
+  finalPrompt?: string;
+
+  /** Add examples for few-shot learning */
+  examples(examples: ProgramExample[]): ProgramBuilder<T>;
 
   /** Specify the model to use for generation */
   using(model: ModelDefinition | string): ProgramBuilder<T>;
 
   /** Generate code with the given variables */
-  generate(variables: ProgramVariables, options?: ProgramExecutionOptions): Promise<T>;
+  _generate(variables: ProgramVariables, options?: ProgramExecutionOptions): Promise<T>;
 
   /** 
    * Execute the generated function with the given variables
    * Returns a proxy that allows direct function calls
    */
-  build(variables?: ProgramVariables, options?: ProgramExecutionOptions): Promise<any>;
+  _build(variables?: ProgramVariables, options?: ProgramExecutionOptions): Promise<any>;
 
   /** Specify the return type of the program */
   returns<R>(): ProgramBuilder<R>;
 
   /** Set execution options for this program */
   options(opts: ProgramExecutionOptions): ProgramBuilder<T>;
+
+  /** Enable debug mode for this program builder */
+  debug(config: { showPrompt?: boolean; showIterations?: boolean; explanations?: boolean }): ProgramBuilder<T>;
 
   /** Save this program for later use (legacy method) */
   persist(id: string): ProgramBuilder<T>;
