@@ -600,8 +600,34 @@ export function createProgram<T = any>(strings: TemplateStringsArray, ...values:
                 needsSave: false // Don't need to save if we loaded existing code
               });
               
-              // Set debug properties for loaded programs
-              if (internalState._debugConfig) {
+              // Restore debug properties from persisted data if available
+              if (existingProgram.debug) {
+                // Restore debug config if available
+                if (existingProgram.debug.config) {
+                  this._debugConfig = existingProgram.debug.config;
+                  updateInternalState<T>(this, { _debugConfig: existingProgram.debug.config });
+                }
+                
+                // Restore finalPrompt if available
+                if (existingProgram.debug.finalPrompt) {
+                  this.finalPrompt = existingProgram.debug.finalPrompt;
+                  updateInternalState<T>(this, { finalPrompt: existingProgram.debug.finalPrompt });
+                }
+                
+                // Restore iterations if available
+                if (existingProgram.debug.iterations) {
+                  this.iterations = existingProgram.debug.iterations;
+                  updateInternalState<T>(this, { iterations: existingProgram.debug.iterations });
+                }
+                
+                // Restore explanation if available
+                if (existingProgram.debug.explanation) {
+                  this.explanation = existingProgram.debug.explanation;
+                  updateInternalState<T>(this, { explanation: existingProgram.debug.explanation });
+                }
+              }
+              // If no persisted debug data but debug is enabled, generate placeholder values
+              else if (internalState._debugConfig) {
                 // Set finalPrompt if debug is enabled and showPrompt is true
                 if (internalState._debugConfig.showPrompt) {
                   try {
@@ -781,7 +807,14 @@ export function createProgram<T = any>(strings: TemplateStringsArray, ...values:
         },
         examples: this.exampleList,
         model: this.modelDef,
-        generatedCode: this.generatedCode
+        generatedCode: this.generatedCode,
+        // Include debug properties in the persisted data
+        debug: {
+          config: this._debugConfig,
+          finalPrompt: this.finalPrompt,
+          iterations: this.iterations,
+          explanation: this.explanation
+        }
       };
 
       debugLog('persistence', `Data prepared for storage, calling store.save...`);
