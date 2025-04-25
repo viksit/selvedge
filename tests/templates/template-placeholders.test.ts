@@ -11,28 +11,19 @@ describe('Template Placeholders', () => {
       }
     `;
 
-    // Test the initial method chaining
-    const withExamples = template.examples({
-      "test": "result"
-    });
+    // Update to V2 examples format (array of objects)
+    const withExamples = template.examples([
+      { input: { testInput: 'test' }, output: 'result' }
+    ]);
 
-    expect(typeof withExamples.using).toBe('function');
-
-    // Register a mock model with the alias we're going to use
     selvedge.models({
       "model-name": selvedge.mock('test-model')
     });
 
-    const withModel = withExamples.using("model-name");
-    expect(typeof withModel.persist).toBe('function');
-
-    const result = withModel.persist("test-id");
-
-    // Check that the template exists in the result
-    expect(result).toHaveProperty('template');
-    // The template property can be a function or an object depending on implementation
-    expect(result.template).toBeDefined();
-    expect(result.template).not.toBeNull();
+    const withModel = withExamples.model("model-name");
+    const finalBuilder = withModel.persist({ id: "test-id" });
+    expect(finalBuilder).toBeDefined();
+    expect(typeof finalBuilder).toBe('function'); // V2 builder is callable
   });
 
   test('prompt template works with the new implementation', () => {

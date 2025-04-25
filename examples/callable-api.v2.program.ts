@@ -3,7 +3,7 @@ import { selvedge } from '../src';
 import { program as v2Program } from '../src/lib/programs/v2/entry';
 
 // Enable debug logging
-selvedge.debug("*");
+// selvedge.debug("*");
 
 // Register models - this is required before using them
 selvedge.models({
@@ -15,14 +15,14 @@ selvedge.models({
 async function main() {
   console.log("Running word counter example...");
   const wordCounter = v2Program`
-    /** Count word freq */
+    /** Count word freq only if the word starts with q */
   `
     .returns<{ [word: string]: number }>()
     .model('gpt4')
-    .options({ forceRegenerate: true })
-    .persist({ id: 'word-counter-99' });
+    .options({ forceRegenerate: false })
+    .persist({ id: 'word-counter-90' });
   const result = await wordCounter("the quick brown fox jumps over the lazy dog");
   console.log("Result:", result);
-  console.log("Generated code:", wordCounter.state.generatedCode);
+  // console.log("Generated code:", wordCounter.state.generatedCode);
 }
 main().catch(console.error);
