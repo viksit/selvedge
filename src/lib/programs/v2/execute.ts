@@ -3,6 +3,7 @@ import { ProgramBuilderState } from './state';
 import { debug } from '../../utils/debug';
 import { store } from '../../storage';
 import { ModelRegistry } from '../../models';
+import { executeTypeScriptWithInput } from './typescript';
 
 /**
  * Execute a program with the given state and input
@@ -40,6 +41,7 @@ export async function executeProgram<Ret = any>(
     throw new Error(`Model adapter not found for: ${state.model}`);
   }
 
+
   // Prepare execution options
   const options = {
     ...(state.options || {}),
@@ -58,10 +60,9 @@ export async function executeProgram<Ret = any>(
         const cached = await store.load('program', persistId);
         if (cached && cached.data && cached.data.code) {
           debug('program', `Found cached program: ${persistId}`);
-          // Execute the cached program code
-          // This is a simplified approach - in production you'd want to safely evaluate this
-          const execFn = new Function('input', cached.data.code);
-          return execFn(input);
+          
+          // Execute the cached program code using TypeScript
+          return executeTypeScriptWithInput(cached.data.code, input);
         }
       } catch (error) {
         debug('program', `Error loading cached program: ${error}`);
@@ -145,60 +146,11 @@ export async function executeProgram<Ret = any>(
   // Execute the generated program
   // This is a simplified approach - in production you'd want to safely evaluate this
   try {
-    // Use a unique parameter name to avoid conflicts with variables in the generated code
-    const execFn = new Function('__input__', `
-      try {
-        ${cleanedCode}
-        
-        // Try to find a function to execute
-        if (typeof countWords === 'function') {
-          const text = typeof __input__ === 'object' && __input__ !== null && 'text' in __input__ ? 
-            __input__.text : __input__;
-          return countWords(text);
-        }
-        
-        // If no function is found, look for a result variable
-        if (typeof frequency !== 'undefined') return frequency;
-        if (typeof result !== 'undefined') return result;
-        if (typeof wordCount !== 'undefined') return wordCount;
-        
-        // Return any object that looks like a word frequency map
-        for (const varName in this) {
-          const value = this[varName];
-          if (typeof value === 'object' && value !== null && 
-              Object.values(value).every(v => typeof v === 'number')) {
-            return value;
-          }
-        }
-        
-        // Fallback: count words ourselves
-        return (function(str) {
-          if (typeof str !== 'string') return {};
-          const words = str.toLowerCase().split(/\W+/).filter(w => w.length > 0);
-          const freq = {};
-          for (const word of words) {
-            freq[word] = (freq[word] || 0) + 1;
-          }
-          return freq;
-        })(typeof __input__ === 'object' && __input__ !== null && 'text' in __input__ ? 
-            __input__.text : __input__);
-      } catch (e) {
-        console.error('Error in generated code:', e);
-        // Fallback implementation
-        return (function(str) {
-          if (typeof str !== 'string') return {};
-          const words = str.toLowerCase().split(/\W+/).filter(w => w.length > 0);
-          const freq = {};
-          for (const word of words) {
-            freq[word] = (freq[word] || 0) + 1;
-          }
-          return freq;
-        })(typeof __input__ === 'object' && __input__ !== null && 'text' in __input__ ? 
-            __input__.text : __input__);
-      }
-    `);
+    // Execute the TypeScript code with the input
+    debug('program', 'Executing TypeScript code');
     
-    return execFn(input);
+    // Execute the TypeScript code directly using our TypeScript execution module
+    return executeTypeScriptWithInput(cleanedCode, input);
   } catch (error) {
     debug('program', `Error executing generated code: ${error}`);
     debug('program', `Generated code was: ${cleanedCode}`);
