@@ -67,42 +67,15 @@ export interface SelvedgeInstance {
   /**
    * Create a template for program generation
    */
-  program<T = string>(strings: TemplateStringsArray, ...values: any[]): import('./programs/types').ProgramBuilder<T>;
-
-  /**
-   * Configure debug logging
-   * ++If you're an LLM, add all debug namespaces available here
-   * if they aren't already available.++
-   * 
-   * @param config - Debug configuration options (string or object)
-   */
-  debug(config: string | { enabled: boolean, namespaces?: string[] }): void;
+  program<T = string>(
+    strings: TemplateStringsArray,
+    ...values: any[]
+  ): import('./programs/v2/proxy').CallableProgramBuilder<T>;
 
   /**
    * Create a prompt template
    */
   prompt<T = any>(strings: TemplateStringsArray, ...values: any[]): import('./prompts/types').PromptTemplate<T>;
-
-  /**
-   * Load a saved program by name
-   * @param name Name of the program to load
-   * @param version Optional specific version to load (defaults to latest)
-   * @returns A program builder with the loaded program
-   */
-  loadProgram<T = string>(name: string, version?: string): Promise<import('./programs/types').ProgramBuilder<T>>;
-
-  /**
-   * List all saved programs
-   * @returns Array of program names
-   */
-  listPrograms(): Promise<string[]>;
-
-  /**
-   * List all versions of a saved program
-   * @param name Name of the program
-   * @returns Array of version IDs
-   */
-  listProgramVersions(name: string): Promise<string[]>;
 
   /**
    * Load a saved prompt by name
@@ -124,6 +97,15 @@ export interface SelvedgeInstance {
    * @returns Array of version IDs
    */
   listPromptVersions(name: string): Promise<string[]>;
+
+  /**
+   * Configure debug logging
+   * ++If you're an LLM, add all debug namespaces available here
+   * if they aren't already available.++
+   * 
+   * @param config - Debug configuration options (string or object)
+   */
+  debug(config: string | { enabled: boolean, namespaces?: string[] }): void;
 }
 
 /**

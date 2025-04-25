@@ -9,17 +9,18 @@ selvedge.models({
 });
 
 async function main() {
-  // Example 1: Sentiment Analysis using callable prompt template
+  // Example 1: Sentiment Analysis using callable program template
   console.log('Example 1: Sentiment Analysis');
-  const sentimentAnalyzer = selvedge.prompt`
-    Analyze the sentiment in this text: ${text => text}
-    Respond with a JSON object containing score (-1.0 to 1.0), label, and confidence.
-    Include detailed rationale for the score.
+  const sentimentAnalyzer = selvedge.program`
+    Analyze the sentiment of the following text:
+    Text: ${input => input.text}
+    Return a JSON object with score (-1 to 1), label (positive/negative/neutral), confidence (0-1), and rationale.
+    {{ ... }}
   `
     .returns<{ score: number; label: string; confidence: number; rationale: string }>()
-    .using("claude")
+    .model("claude") 
     .options({ temperature: 0.2 })
-    .persist("sentiment-test-99");
+    .persist({ id: "sentiment-test-99" });
 
   // call it directly as a function!
   const result = await sentimentAnalyzer({
@@ -40,9 +41,9 @@ async function main() {
      */
   `
     .returns<{ [word: string]: number }>()
-    .using("gpt4")
-    .options({ forceRegenerate: false })
-    .persist("word-counter-99");
+    .model('gpt4') 
+    .options({ forceRegenerate: true })
+    .persist({ id: 'word-counter-v2' }); // Use a different ID to avoid conflict with V1 cache if needed
 
   // Call it directly as a function
   const frequency = await wordCounter("This is a test. This is only a test.");

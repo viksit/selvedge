@@ -4,10 +4,12 @@
 import { ModelRegistry } from './models';
 import { ModelProvider, SelvedgeInstance, ModelDefinition } from './types';
 import { createTemplate, PromptTemplate } from './prompts';
-import { createProgram, ProgramBuilder } from './programs';
 import { store } from './storage';
 import { flow as createFlow } from './flow';
 import { enableDebug, enableNamespace, parseDebugString } from './utils/debug';
+
+import { program as createV2Program } from './programs/v2/entry';
+import { CallableProgramBuilder } from './programs/v2/proxy';
 
 /**
  * The main Selvedge instance that provides access to all library functionality
@@ -186,9 +188,12 @@ export const selvedge: SelvedgeInstance = {
    * const code = await generateFunction.generate({ task: "reverses a string" });
    * ```
    */
-  program<T = string>(strings: TemplateStringsArray, ...values: any[]): ProgramBuilder<T> {
-    // The createProgram function now handles making the builder callable
-    return createProgram<T>(strings, values);
+  program<T = string>(
+    strings: TemplateStringsArray,
+    ...values: any[]
+  ): CallableProgramBuilder<T> {
+    // Call the V2 factory function
+    return createV2Program<T>(strings, values);
   },
 
   /**
@@ -212,94 +217,6 @@ export const selvedge: SelvedgeInstance = {
    */
   prompt<T = any>(strings: TemplateStringsArray, ...values: any[]): PromptTemplate<T> {
     return createTemplate<T>(strings, values);
-  },
-
-  /**
-   * Load a saved program by name
-   * 
-   * @param name - Name of the program to load
-   * @param version - Optional specific version to load (defaults to latest)
-   * @returns A program builder with the loaded program
-   * 
-   * @example
-   * ```typescript
-   * // Load the latest version of a saved program
-   * const myProgram = await selvedge.loadProgram("my-code-generator");
-   * 
-   * // Use the loaded program
-   * const result = await myProgram.generate({ task: "reverse a string" });
-   * ```
-   */
-  async loadProgram<T = string>(name: string, version?: string): Promise<ProgramBuilder<T>> {
-    // Debug store instance
-    console.log('--------------- LOAD PROGRAM DEBUG ---------------');
-    console.log(`Load store ID: ${(store as any).testId || 'undefined'}`);
-    console.log(`Load store instance: ${store.constructor.name}`);
-    console.log(`Load base path: ${store.getBasePath()}`);
-    console.log(`Loading program: ${name}`);
-    console.log('---------------------------------------------------');
-
-    // Load the program data from storage
-    const data = await store.load('program', name, version);
-
-    // Create a base program builder with an empty template
-    // Use a minimal template string to initialize the program builder
-    const emptyTemplate = [''] as unknown as TemplateStringsArray;
-    const builder = createProgram<T>(emptyTemplate, []);
-
-    // Reconstruct the program builder with the loaded data
-    if (data && data.template) {
-      // Replace the template properties
-      builder.template.segments = data.template.segments;
-      builder.template.variables = data.template.variables;
-
-      // Set examples and model
-      if (data.examples) {
-        builder.exampleList = data.examples;
-      }
-
-      if (data.model) {
-        builder.modelDef = data.model;
-      }
-
-      // Set the generated code if available
-      if (data.generatedCode) {
-        builder.generatedCode = data.generatedCode;
-      }
-    }
-
-    return builder as ProgramBuilder<T>;
-  },
-
-  /**
-   * List all saved programs
-   * 
-   * @returns Array of program names
-   * 
-   * @example
-   * ```typescript
-   * const programs = await selvedge.listPrograms();
-   * console.log("Available programs:", programs);
-   * ```
-   */
-  async listPrograms(): Promise<string[]> {
-    return store.list('program');
-  },
-
-  /**
-   * List all versions of a saved program
-   * 
-   * @param name - Name of the program
-   * @returns Array of version IDs
-   * 
-   * @example
-   * ```typescript
-   * const versions = await selvedge.listProgramVersions("my-code-generator");
-   * console.log("Available versions:", versions);
-   * ```
-   */
-  async listProgramVersions(name: string): Promise<string[]> {
-    return store.listVersions('program', name);
   },
 
   /**
