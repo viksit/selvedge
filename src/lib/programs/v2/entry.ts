@@ -6,7 +6,7 @@ import { createCallableBuilder, CallableProgramBuilder } from './proxy';
  * Tagged template entrypoint for program builder.
  * Usage: program`my prompt here ${expr}`
  */
-export function program(strings: TemplateStringsArray, ...exprs: any[]): CallableProgramBuilder {
+export function program<Ret = any>(strings: TemplateStringsArray, ...exprs: any[]): CallableProgramBuilder<Ret> {
   // Interpolate the prompt
   let prompt = '';
   for (let i = 0; i < strings.length; i++) {

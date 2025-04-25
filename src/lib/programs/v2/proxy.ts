@@ -1,13 +1,34 @@
 // src/lib/programs/v2/proxy.ts
-import { ProgramBuilder } from './factory';
+import type { ProgramBuilder } from './factory';
 import { executeProgram } from './execute';
 import { debug } from '../../utils/debug';
 
 // For tracking proxy method calls
 const proxyDebugEnabled = true;
 
-// Type for the callable builder
-export type CallableProgramBuilder<Ret = any> = ProgramBuilder<Ret> & ((input: any) => Promise<Ret>);
+/**
+ * Callable builder: methods + call signature for program execution.
+ */
+export interface CallableProgramBuilder<Ret = any> {
+  /** Execute the program with input */
+  (input: any): Promise<Ret>;
+  /** Set prompt and return new callable builder */
+  prompt(prompt: string): CallableProgramBuilder<Ret>;
+  /** Set model and return new callable builder */
+  model(model: string): CallableProgramBuilder<Ret>;
+  /** Set options and return new callable builder */
+  options(options: Record<string, any>): CallableProgramBuilder<Ret>;
+  /** Set persistence and flag save, return new callable builder */
+  persist(persistence: { id: string; [key: string]: any }): CallableProgramBuilder<Ret>;
+  /** Set examples and return new callable builder */
+  examples(examples: Array<{ input: any; output: any }>): CallableProgramBuilder<Ret>;
+  /** Specify return type (type-only) and return new callable builder */
+  returns<NewRet>(): CallableProgramBuilder<NewRet>;
+  /** Specify return type with value and return new callable builder */
+  returns<NewRet>(returnsType: NewRet): CallableProgramBuilder<NewRet>;
+  /** Current builder state */
+  readonly state: import('./state').ProgramBuilderState<Ret>;
+}
 
 /**
  * Wraps a ProgramBuilder in a Proxy to make it callable and preserve method/property access.
