@@ -19,9 +19,9 @@ async function main() {
   `
     .returns<{ [word: string]: number }>()
     .model('gpt4')
-    .options({ forceRegenerate: false })
+    .options({ forceRegenerate: true })
     .persist({ id: 'word-counter-99' });
-  const result = await wordCounter("This is a test. This is only a test.");
+  const result = await wordCounter("the quick brown fox jumps over the lazy dog");
   console.log("Result:", result);
   console.log("Generated code:", wordCounter.state.generatedCode);
 }

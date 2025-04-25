@@ -1,6 +1,6 @@
 // tests/programs/v2/typescript.test.ts
 import { describe, test, expect } from 'bun:test';
-import { evaluateTypeScript, executeTypeScriptWithInput } from '../../../src/lib/programs/v2/typescript';
+import { evaluateTypeScript, executeTypeScriptWithInput, executeTypeScriptDetailed } from '../../../src/lib/programs/v2/typescript';
 
 // Import the detectMainFunction function directly
 import { detectMainFunction } from '../../../src/lib/programs/v2/typescript';
@@ -137,5 +137,18 @@ describe('TypeScript Execution', () => {
     
     const result = executeTypeScriptWithInput(code, 'hello world hello');
     expect(result).toEqual({ hello: 2, world: 1 });
+  });
+
+  test('executeTypeScriptDetailed returns full context and result', () => {
+    const code = `
+      function echo(input: any): any {
+        return input;
+      }
+    `;
+    const input = { msg: 'hello' };
+    const { context, result } = executeTypeScriptDetailed(code, input);
+    expect(result).toEqual(input);
+    // The context.exports should contain __result equal to the result
+    expect(context.exports.__result).toEqual(input);
   });
 });

@@ -26,6 +26,8 @@ export interface CallableProgramBuilder<Ret = any> {
   returns<NewRet>(): CallableProgramBuilder<NewRet>;
   /** Specify return type with value and return new callable builder */
   returns<NewRet>(returnsType: NewRet): CallableProgramBuilder<NewRet>;
+  /** Disable automatic result unwrapping; return full context */
+  raw(): CallableProgramBuilder<Ret>;
   /** Current builder state */
   readonly state: import('./state').ProgramBuilderState<Ret>;
 }

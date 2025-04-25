@@ -14,6 +14,8 @@ export interface ProgramBuilderState<Ret = any> {
   needsSave?: boolean;
   /** Generated code extracted from LLM response */
   generatedCode?: string;
+  /** Flag to control unwrapping of execution result; default true (return only result) */
+  unwrapResult?: boolean;
 }
 
 /**

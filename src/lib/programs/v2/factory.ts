@@ -6,7 +6,8 @@ import {
   options,
   persist,
   examples,
-  returns
+  returns,
+  raw
 } from './builder';
 
 export interface ProgramBuilder<Ret = any> {
@@ -18,6 +19,8 @@ export interface ProgramBuilder<Ret = any> {
   // Overloads for withReturnsType: type-only or with a value
   returns<NewRet>(): ProgramBuilder<NewRet>;
   returns<NewRet>(returnsType: NewRet): ProgramBuilder<NewRet>;
+  /** Disable automatic result unwrapping; return full VM context */
+  raw(): ProgramBuilder<Ret>;
   readonly state: ProgramBuilderState<Ret>;
 }
 
@@ -41,6 +44,9 @@ export function createProgramBuilder<Ret = any>(state: ProgramBuilderState<Ret> 
     returns<NewRet>(returnsType?: NewRet) {
       // Note: returnsType can be omitted for type-only generic invocation
       return createProgramBuilder(returns(state, returnsType as any));
+    },
+    raw() {
+      return createProgramBuilder(raw(state));
     },
     get state() {
       return state;

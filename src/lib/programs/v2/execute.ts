@@ -3,7 +3,7 @@ import { ProgramBuilderState } from './state';
 import { debug } from '../../utils/debug';
 import { store } from '../../storage';
 import { ModelRegistry } from '../../models';
-import { executeTypeScriptWithInput } from './typescript';
+import { executeTypeScriptWithInput, executeTypeScriptDetailed } from './typescript';
 
 /**
  * Base error for execution pipeline.
@@ -105,6 +105,8 @@ export interface ExecuteOptions {
   forceRegenerate?: boolean;
   /** Timeout for LLM calls (ms). */
   timeout?: number;
+  /** If false, return full VM context instead of only result */
+  unwrapResult?: boolean;
 }
 
 /**
@@ -173,6 +175,14 @@ export async function executeProgram<Ret = any>(
   state.generatedCode = code;
   const adapted = adaptInputForCode(code, input);
   try {
+    // Determine unwrapping behavior: explicit option overrides, else state flag (default true)
+    const unwrap = options.unwrapResult !== undefined
+      ? options.unwrapResult
+      : state.unwrapResult !== false;
+    if (!unwrap) {
+      const { context } = executeTypeScriptDetailed(code, adapted);
+      return context.exports as Ret;
+    }
     return (await executeTypeScriptWithInput(code, adapted)) as Ret;
   } catch (e) {
     debug('execution', 'Execution error', e as Error);

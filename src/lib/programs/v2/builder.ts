@@ -27,3 +27,10 @@ export function returns<NewRet>(state: ProgramBuilderState<any>, returnsType: Ne
 export function returns<NewRet>(state: ProgramBuilderState<any>, returnsType?: NewRet): ProgramBuilderState<NewRet> {
   return { ...state, returnsType: returnsType as NewRet } as ProgramBuilderState<NewRet>;
 }
+
+/**
+ * Disable automatic result unwrapping; return full context on execution
+ */
+export function raw<Ret>(state: ProgramBuilderState<Ret>): ProgramBuilderState<Ret> {
+  return { ...state, unwrapResult: false } as ProgramBuilderState<Ret>;
+}

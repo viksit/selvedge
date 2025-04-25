@@ -219,6 +219,9 @@ function generateExecutionWrapper(compiledCode: string, analysis: ReturnType<typ
         // Capture any runtime errors
         exports.__error = error;
       }
+      
+      // Always return the captured result
+      return exports.__result;
     })();
   `;
 }
@@ -296,56 +299,37 @@ export function evaluateTypeScript(code: string, functionName?: string): any {
 }
 
 /**
- * Executes TypeScript code with the given input
- * @param code The TypeScript code to execute
- * @param input The input to pass to the code
- * @returns The result of the execution
+ * Executes TypeScript code with the given input; returns only the result.
  */
 export function executeTypeScriptWithInput(code: string, input: any): any {
-  debug('program', 'Analyzing TypeScript code structure');
+  const { result } = executeTypeScriptDetailed(code, input);
+  // Deep-clone into a null-prototype object to strip sandbox prototypes
+  const clean = JSON.parse(JSON.stringify(result));
+  return Object.assign(Object.create(null), clean);
+}
+
+/**
+ * Executes TypeScript code with full VM context; returns both context and result.
+ */
+export function executeTypeScriptDetailed(code: string, input: any): { context: vm.Context; result: any } {
+  debug('program', 'Analyzing TypeScript code structure for detailed execution');
   const analysis = analyzeTypeScriptCode(code);
-  
-  debug('program', 'Compiling TypeScript code');
   const { compiledCode, diagnostics } = compileTypeScript(code);
-  
-  // Handle compilation errors
   if (diagnostics.length > 0) {
-    const errors = diagnostics
-      .map(diag => ts.flattenDiagnosticMessageText(diag.messageText, '\n'));
-    const errorMessage = `TypeScript compilation errors:\n${errors.join('\n')}`;
-    debug('program', errorMessage);
-    throw new Error(errorMessage);
+    const errors = diagnostics.map(diag => ts.flattenDiagnosticMessageText(diag.messageText, '\n'));
+    throw new Error(`TypeScript compilation errors:\n${errors.join('\n')}`);
   }
-  
-  // Sanitize input for security
   const safeInput = sanitizeInput(input);
   debug('program', `Input sanitized, type: ${typeof safeInput}`);
-  
-  // Create a clean sandbox with well-defined globals
-  const sandbox = createSandbox(safeInput);
-  
-  debug('program', `Executing with ${analysis.mainFunction ? 'detected function: ' + analysis.mainFunction : 'no explicit function'}`);
-  
-  try {
-    // Generate a clean execution wrapper based on analysis
-    const wrappedCode = generateExecutionWrapper(compiledCode, analysis);
-    
-    // Execute the code with timeout protection
-    executeInSandbox(wrappedCode, sandbox);
-    
-    // Check for runtime errors
-    if (sandbox.exports.__error) {
-      debug('program', `Runtime error: ${sandbox.exports.__error}`);
-      throw new Error(`Error executing TypeScript code: ${sandbox.exports.__error.message || String(sandbox.exports.__error)}`);
-    }
-    
-    // Return the result
-    debug('program', `Execution complete, result type: ${typeof sandbox.exports.__result}`);
-    return sandbox.exports.__result;
-  } catch (error: any) {
-    debug('program', `Error in TypeScript execution: ${error}`);
-    throw new Error(`Error evaluating TypeScript code: ${error.message || String(error)}`);
+  const context = createSandbox(safeInput);
+  debug('program', 'Executing detailed wrapper');
+  const wrappedCode = generateExecutionWrapper(compiledCode, analysis);
+  executeInSandbox(wrappedCode, context);
+  if (context.exports.__error) {
+    debug('program', `Runtime error: ${context.exports.__error}`);
+    throw context.exports.__error;
   }
+  return { context, result: context.exports.__result };
 }
 
 /**
