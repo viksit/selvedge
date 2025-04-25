@@ -1,46 +1,46 @@
 // src/lib/programs/v2/factory.ts
 import { ProgramBuilderState } from './state';
 import {
-  withPrompt,
-  withModel,
-  withOptions,
-  withPersistence,
-  withExamples,
-  withReturnsType
+  prompt,
+  model,
+  options,
+  persist,
+  examples,
+  returns
 } from './builder';
 
 export interface ProgramBuilder<Ret = any> {
-  withPrompt(prompt: string): ProgramBuilder<Ret>;
-  withModel(model: string): ProgramBuilder<Ret>;
-  withOptions(options: Record<string, any>): ProgramBuilder<Ret>;
-  withPersistence(persistence: { id: string; [key: string]: any }): ProgramBuilder<Ret>;
-  withExamples(examples: Array<{ input: any; output: any }>): ProgramBuilder<Ret>;
+  prompt(prompt: string): ProgramBuilder<Ret>;
+  model(model: string): ProgramBuilder<Ret>;
+  options(options: Record<string, any>): ProgramBuilder<Ret>;
+  persist(persistence: { id: string;[key: string]: any }): ProgramBuilder<Ret>;
+  examples(examples: Array<{ input: any; output: any }>): ProgramBuilder<Ret>;
   // Overloads for withReturnsType: type-only or with a value
-  withReturnsType<NewRet>(): ProgramBuilder<NewRet>;
-  withReturnsType<NewRet>(returnsType: NewRet): ProgramBuilder<NewRet>;
+  returns<NewRet>(): ProgramBuilder<NewRet>;
+  returns<NewRet>(returnsType: NewRet): ProgramBuilder<NewRet>;
   readonly state: ProgramBuilderState<Ret>;
 }
 
 export function createProgramBuilder<Ret = any>(state: ProgramBuilderState<Ret> = {} as any): ProgramBuilder<Ret> {
   return {
-    withPrompt(prompt) {
-      return createProgramBuilder(withPrompt(state, prompt));
+    prompt(promptText) {
+      return createProgramBuilder(prompt(state, promptText));
     },
-    withModel(model) {
-      return createProgramBuilder(withModel(state, model));
+    model(modelName) {
+      return createProgramBuilder(model(state, modelName));
     },
-    withOptions(options) {
-      return createProgramBuilder(withOptions(state, options));
+    options(optionsObj) {
+      return createProgramBuilder(options(state, optionsObj));
     },
-    withPersistence(persistence) {
-      return createProgramBuilder(withPersistence(state, persistence));
+    persist(persistenceObj) {
+      return createProgramBuilder(persist(state, persistenceObj));
     },
-    withExamples(examples) {
-      return createProgramBuilder(withExamples(state, examples));
+    examples(examplesArr) {
+      return createProgramBuilder(examples(state, examplesArr));
     },
-    withReturnsType<NewRet>(returnsType?: NewRet) {
+    returns<NewRet>(returnsType?: NewRet) {
       // Note: returnsType can be omitted for type-only generic invocation
-      return createProgramBuilder(withReturnsType(state, returnsType as any));
+      return createProgramBuilder(returns(state, returnsType as any));
     },
     get state() {
       return state;

@@ -15,7 +15,7 @@ describe('Tagged template entrypoint', () => {
   });
 
   it('should allow chaining builder methods and preserve callability', () => {
-    const p = program`foo`.withModel('bar').withOptions({ x: 1 });
+    const p = program`foo`.model('bar').options({ x: 1 });
     expect(typeof p).toBe('function');
     expect(p.state.prompt).toBe('foo');
     expect(p.state.model).toBe('bar');

@@ -11,9 +11,9 @@ type Assert<T, Expected> = T extends Expected
 describe('TypeScript typing and inference', () => {
   it('should infer prompt and state types through chaining', () => {
     const p = program`foo`
-      .withModel('gpt-4')
-      .withOptions({ temp: 0.2 })
-      .withReturnsType<{ result: number }>();
+      .model('gpt-4')
+      .options({ temp: 0.2 })
+      .returns<{ result: number }>();
     // expect(p.returnsType).toBeUndefined();
     type State = typeof p.state;
     // Should have correct fields
@@ -33,7 +33,7 @@ describe('TypeScript typing and inference', () => {
   });
 
   it('should preserve type through chaining', () => {
-    const p = program`foo`.withReturnsType<{ foo: number }>();
+    const p = program`foo`.returns<{ foo: number }>();
     type Ret = typeof p.state['returnsType'];
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const _assert: Assert<Ret, { foo: number }> = true;

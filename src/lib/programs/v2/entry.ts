@@ -16,6 +16,6 @@ export function program(strings: TemplateStringsArray, ...exprs: any[]): Callabl
     }
   }
   // Create builder with prompt
-  const builder = createProgramBuilder().withPrompt(prompt);
+  const builder = createProgramBuilder().prompt(prompt);
   return createCallableBuilder(builder);
 }
