@@ -125,7 +125,7 @@ export async function executeProgram<Ret = any>(
   input: unknown,
   options: ExecuteOptions = {}
 ): Promise<Ret> {
-  if (!state.model) throw new ProgramError('Missing model in state');
+  if (!state.model) throw new ProgramError('No model specified for program execution');
   if (!state.prompt) throw new ProgramError('Missing prompt in state');
 
   debug('program', `executeProgram start model=${state.model}`);

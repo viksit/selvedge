@@ -36,6 +36,10 @@ export function createCallableBuilder<Ret = any>(builder: ProgramBuilder<Ret>): 
         debug('program', `Error: Program execution expected exactly one argument, got ${args.length}`);
         throw new Error('Program execution expected exactly one argument');
       }
+      if (!builder.state.model) {
+        debug('program', 'Error: No model specified for program execution');
+        throw new Error('No model specified for program execution');
+      }
       
       // Called as a function: builder(input)
       // Return the promise from handlerFn
