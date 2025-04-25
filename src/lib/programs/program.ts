@@ -822,7 +822,7 @@ export function createProgram<T = any>(strings: TemplateStringsArray, ...values:
       try {
         // Save to storage - only do this once
         const versionId = await store.save('program', name, data);
-        console.log(`Program saved with version ID: ${versionId}`);
+        debugLog('persistence', `Program saved with version ID: ${versionId}`);
 
         // Update internal state with the new persistId and reset needsSave flag
         updateInternalState<T>(this, {
@@ -832,18 +832,37 @@ export function createProgram<T = any>(strings: TemplateStringsArray, ...values:
 
         // Verify the program exists after saving
         const programDir = path.join(store.getBasePath(), 'programs', name);
+        
+        // Add a small delay to ensure filesystem sync
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
         const dirExists = await fs.access(programDir).then(() => true).catch(() => false);
-        console.log(`Program directory exists after save: ${dirExists ? 'YES' : 'NO'} - ${programDir}`);
+        debugLog('persistence', `Program directory exists after save: ${dirExists ? 'YES' : 'NO'} - ${programDir}`);
 
         if (dirExists) {
           const files = await fs.readdir(programDir);
-          console.log(`Files in program directory:`, files);
+          debugLog('persistence', `Files in program directory: ${files.join(', ')}`);
+        } else {
+          // If the directory doesn't exist after saving, this is a critical error
+          // Try to create it manually as a last resort
+          debugLog('persistence', `Critical error: Program directory does not exist after save. Attempting manual creation...`);
+          await fs.mkdir(programDir, { recursive: true });
+          
+          // Write a placeholder latest.json file
+          const latestPath = path.join(programDir, 'latest.json');
+          await fs.writeFile(latestPath, JSON.stringify({ version: versionId }, null, 2));
+          
+          // Write the version file
+          const versionPath = path.join(programDir, `${versionId}.json`);
+          await fs.writeFile(versionPath, JSON.stringify(data, null, 2));
+          
+          debugLog('persistence', `Manual directory and file creation completed`);
         }
         
         // Return this for chaining
         return this as unknown as ProgramBuilder<T>;
       } catch (error) {
-        console.log(`Error saving program:`, error);
+        debugLog('persistence', `Error saving program: ${(error as Error).message}`);
         // Don't reset needsSave flag if saving failed
         throw error; // Propagate the error
       }

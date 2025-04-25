@@ -180,13 +180,7 @@ describe('Debug functionality', () => {
     // Execute the program
     const result = await finalProgram(3, 4);
     
-    // Manually set debug properties to verify they can be accessed
-    // This simulates what would happen in a real execution with a proper LLM
-    finalProgram.finalPrompt = 'function multiply(a: number, b: number): number';
-    finalProgram.iterations = [{ code: 'function multiply(a, b) { return a * b; }' }];
-    finalProgram.explanation = 'This function takes two parameters and returns their product.';
-    
-    // Debug properties should be accessible after manual setting
+    // Debug properties should be populated after execution
     expect(finalProgram.finalPrompt).toBeDefined();
     expect(finalProgram.iterations).toBeDefined();
     expect(finalProgram.explanation).toBeDefined();

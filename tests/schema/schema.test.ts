@@ -3,6 +3,7 @@
  */
 import * as z from 'zod';
 import { inferSchema, generateJsonExampleFromSchema, validateWithSchema } from '@schema/index';
+import { describe, expect, test } from 'bun:test';
 
 describe('Schema utilities', () => {
   describe('inferSchema', () => {
