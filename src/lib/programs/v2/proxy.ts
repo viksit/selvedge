@@ -1,17 +1,20 @@
 // src/lib/programs/v2/proxy.ts
 import { ProgramBuilder } from './factory';
+import { executeProgram } from './execute';
+import { debug } from '../../utils/debug';
 
 // Type for the callable builder
-export type CallableProgramBuilder<Ret = any> = ProgramBuilder<Ret> & ((input: any) => Ret);
+export type CallableProgramBuilder<Ret = any> = ProgramBuilder<Ret> & ((input: any) => Promise<Ret>);
 
 /**
  * Wraps a ProgramBuilder in a Proxy to make it callable and preserve method/property access.
- * For now, calling the builder throws 'Not implemented' (to be replaced in later phases).
+ * When called as a function, executes the program with the given input.
  */
 export function createCallableBuilder<Ret = any>(builder: ProgramBuilder<Ret>): CallableProgramBuilder<Ret> {
-  // The callable function (stub for now)
-  const handlerFn = function (_input: any): Ret {
-    throw new Error('Program execution not implemented yet');
+  // The callable function that executes the program
+  const handlerFn = async function (input: any): Promise<Ret> {
+    debug('program', 'Executing program via callable proxy');
+    return await executeProgram<Ret>(builder.state, input);
   };
 
   // Attach all properties/methods from builder to the function
@@ -23,6 +26,7 @@ export function createCallableBuilder<Ret = any>(builder: ProgramBuilder<Ret>): 
         throw new Error('Program execution expected exactly one argument');
       }
       // Called as a function: builder(input)
+      // Return the promise from handlerFn
       return handlerFn.call(builder, args[0]);
     },
     get(_target, prop, receiver) {
