@@ -29,7 +29,7 @@ describe('TypeScript typing and inference', () => {
 
   it('should be callable as a function', () => {
     const p = program`foo`;
-    expect(() => p({ input: 1 })).toThrow('Program execution not implemented yet');
+    expect(() => p({ input: 1 })).toThrow('No model specified for program execution');
   });
 
   it('should preserve type through chaining', () => {

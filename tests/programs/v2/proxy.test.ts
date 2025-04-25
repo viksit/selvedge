@@ -7,7 +7,7 @@ describe('Proxy shell for callability', () => {
     const builder = createProgramBuilder().prompt('test');
     const callable = createCallableBuilder(builder);
     expect(typeof callable).toBe('function');
-    expect(() => callable({ input: 1 })).toThrow('Program execution not implemented yet');
+    expect(() => callable({ input: 1 })).toThrow('No model specified for program execution');
   });
 
   it('should forward property access to builder methods and state', () => {

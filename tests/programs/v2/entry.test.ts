@@ -22,8 +22,8 @@ describe('Tagged template entrypoint', () => {
     expect(p.state.options).toEqual({ x: 1 });
   });
 
-  it('should throw when called as a function (until implemented)', () => {
+  it('should throw when called as a function without a model', () => {
     const p = program`test`;
-    expect(() => p({ input: 1 })).toThrow('Program execution not implemented yet');
+    expect(() => p({ input: 1 })).toThrow('No model specified for program execution');
   });
 });
