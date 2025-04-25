@@ -20,7 +20,7 @@ async function main() {
     .returns<{ score: number; label: string; confidence: number; rationale: string }>()
     .model("claude") 
     .options({ temperature: 0.2 })
-    .persist({ id: "sentiment-test-99" });
+    .persist('sentiment-analyzer-v2');
 
   // call it directly as a function!
   const result = await sentimentAnalyzer({
@@ -43,7 +43,7 @@ async function main() {
     .returns<{ [word: string]: number }>()
     .model('gpt4') 
     .options({ forceRegenerate: true })
-    .persist({ id: 'word-counter-v2' }); // Use a different ID to avoid conflict with V1 cache if needed
+    .persist('word-counter-v2'); // Use a different ID to avoid conflict with V1 cache if needed
 
   // Call it directly as a function
   const frequency = await wordCounter("This is a test. This is only a test.");

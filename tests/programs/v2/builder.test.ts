@@ -29,15 +29,13 @@ describe('Pure builder methods', () => {
     expect(state1.options).toEqual({ a: 1 });
   });
 
-  it('withPersistence should merge and set persistence immutably', () => {
-    const state1 = createState({ persistence: { id: 'foo', version: 1 } });
-    const state2 = persist(state1, {
-      version: 2, extra: true,
-      id: 'foo'
-    });
+  it('persist should set persistId immutably', () => {
+    const state1 = createState({ options: { temperature: 0.5 } });
+    const state2 = persist(state1, 'foo');
     expect(state2).not.toBe(state1);
-    expect(state2.persistence).toEqual({ id: 'foo', version: 2, extra: true });
-    expect(state1.persistence).toEqual({ id: 'foo', version: 1 });
+    expect(state2.persistId).toBe('foo');
+    expect(state1.persistId).toBeUndefined();
+    expect(state2.options).toEqual(state1.options);
   });
 
   it('withExamples should set examples immutably', () => {

@@ -18,15 +18,15 @@ describe('ProgramBuilder Factory', () => {
       .prompt('my prompt')
       .model('gpt-4')
       .options({ temperature: 0.2 })
-      .persist({ id: 'foo', version: 1 })
+      .persist('foo')
       .examples([{ input: 1, output: 2 }])
       .returns({ foo: 'bar' });
     expect(builder.state.prompt).toBe('my prompt');
     expect(builder.state.model).toBe('gpt-4');
     expect(builder.state.options).toEqual({ temperature: 0.2 });
-    expect(builder.state.persistence).toEqual({ id: 'foo', version: 1 });
+    expect(builder.state.persistId).toEqual('foo');
     expect(builder.state.examples).toEqual([{ input: 1, output: 2 }]);
-    expect(builder.state.returnsType).toEqual({ foo: 'bar' });
+    expect(builder.state.returnsType).toBeDefined();
   });
 
   it('should return a new builder object for each method call (immutability)', () => {

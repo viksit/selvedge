@@ -18,8 +18,8 @@ export interface CallableProgramBuilder<Ret = any> {
   model(model: string): CallableProgramBuilder<Ret>;
   /** Set options and return new callable builder */
   options(options: Record<string, any>): CallableProgramBuilder<Ret>;
-  /** Set persistence and flag save, return new callable builder */
-  persist(persistence: { id: string; [key: string]: any }): CallableProgramBuilder<Ret>;
+  /** Set persistence ID and return new callable builder */
+  persist(id: string): CallableProgramBuilder<Ret>;
   /** Set examples and return new callable builder */
   examples(examples: Array<{ input: any; output: any }>): CallableProgramBuilder<Ret>;
   /** Specify return type (type-only) and return new callable builder */

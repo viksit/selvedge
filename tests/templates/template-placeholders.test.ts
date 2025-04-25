@@ -21,7 +21,7 @@ describe('Template Placeholders', () => {
     });
 
     const withModel = withExamples.model("model-name");
-    const finalBuilder = withModel.persist({ id: "test-id" });
+    const finalBuilder = withModel.persist("test-id");
     expect(finalBuilder).toBeDefined();
     expect(typeof finalBuilder).toBe('function'); // V2 builder is callable
   });

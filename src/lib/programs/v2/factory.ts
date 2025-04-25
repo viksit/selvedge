@@ -14,7 +14,7 @@ export interface ProgramBuilder<Ret = any> {
   prompt(prompt: string): ProgramBuilder<Ret>;
   model(model: string): ProgramBuilder<Ret>;
   options(options: Record<string, any>): ProgramBuilder<Ret>;
-  persist(persistence: { id: string;[key: string]: any }): ProgramBuilder<Ret>;
+  persist(id: string): ProgramBuilder<Ret>;
   examples(examples: Array<{ input: any; output: any }>): ProgramBuilder<Ret>;
   // Overloads for withReturnsType: type-only or with a value
   returns<NewRet>(): ProgramBuilder<NewRet>;
@@ -35,8 +35,8 @@ export function createProgramBuilder<Ret = any>(state: ProgramBuilderState<Ret> 
     options(optionsObj) {
       return createProgramBuilder(options(state, optionsObj));
     },
-    persist(persistenceObj) {
-      return createProgramBuilder(persist(state, persistenceObj));
+    persist(id) {
+      return createProgramBuilder(persist(state, id));
     },
     examples(examplesArr) {
       return createProgramBuilder(examples(state, examplesArr));

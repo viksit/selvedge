@@ -4,14 +4,9 @@ export interface ProgramBuilderState<Ret = any> {
   prompt?: string;
   model?: string;
   options?: Record<string, any>;
-  persistence?: {
-    id: string;
-    [key: string]: any;
-  };
+  persistId?: string;
   examples?: Array<{ input: any; output: any }>;
   returnsType?: Ret;
-  /** Flag indicating that the generated code should be persisted */
-  needsSave?: boolean;
   /** Generated code extracted from LLM response */
   generatedCode?: string;
   /** Flag to control unwrapping of execution result; default true (return only result) */

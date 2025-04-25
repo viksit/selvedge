@@ -13,9 +13,10 @@ export function options<Ret>(state: ProgramBuilderState<Ret>, options: Record<st
   return { ...state, options: { ...state.options, ...options } };
 }
 
-export function persist<Ret>(state: ProgramBuilderState<Ret>, persistence: { id: string;[key: string]: any }): ProgramBuilderState<Ret> {
-  // Mark that the generated code should be saved
-  return { ...state, persistence: { ...state.persistence, ...persistence }, needsSave: true };
+// Update persist to accept a string ID directly
+export function persist<Ret>(state: ProgramBuilderState<Ret>, id: string): ProgramBuilderState<Ret> {
+  // Set the persistId directly, remove needsSave flag handling
+  return { ...state, persistId: id };
 }
 
 export function examples<Ret>(state: ProgramBuilderState<Ret>, examples: Array<{ input: any; output: any }>): ProgramBuilderState<Ret> {

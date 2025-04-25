@@ -87,7 +87,10 @@ async function invokeAdapter(
   if (typeof adapter.chat === 'function') {
     const res = await adapter.chat(
       [
-        { role: 'system', content: 'Generate valid TypeScript code only.' },
+        {
+          role: 'system',
+          content: 'You are a code generation assistant that produces clean, efficient code. Generate only the requested function without console.log statements, test cases, or usage examples. Focus on writing production-ready code with proper error handling and type safety. Return only the implementation code within a code block.'
+        },
         { role: 'user', content: prompt }
       ],
       opts
@@ -127,7 +130,8 @@ export async function executeProgram<Ret = any>(
   const adapter = ModelRegistry.getAdapter(modelDef);
   if (!adapter) throw new ProgramError(`Adapter not found for model: ${state.model}`);
 
-  const persistId = state.persistence?.id;
+  // Read persistId directly from state
+  const persistId = state.persistId;
 
   // 1) Try cache
   if (persistId && !options.forceRegenerate) {
@@ -153,8 +157,8 @@ export async function executeProgram<Ret = any>(
     throw new GenerationError('Code generation failed', e as Error);
   }
 
-  // 3) Persist new code if flagged
-  if (persistId && state.needsSave) {
+  // 3) Persist new code if persistId is set (persist() was called)
+  if (persistId) {
     try {
       await store.save('program', persistId, {
         code: rawCode,
@@ -162,8 +166,6 @@ export async function executeProgram<Ret = any>(
         model: modelDef.model
       });
       debug('persistence', `Saved code id=${persistId}`);
-      // Clear save flag
-      state.needsSave = false;
     } catch (e) {
       debug('persistence', 'Save failed', e as Error);
     }

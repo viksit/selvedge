@@ -1,9 +1,8 @@
 // Minimal v2 program definitions ported from callable-api.ts
 import { selvedge } from '../src';
-import { program as v2Program } from '../src/lib/programs/v2/entry';
 
 // Enable debug logging
-// selvedge.debug("*");
+selvedge.debug("*");
 
 // Register models - this is required before using them
 selvedge.models({
@@ -14,13 +13,13 @@ selvedge.models({
 // Example: Word Counter program
 async function main() {
   console.log("Running word counter example...");
-  const wordCounter = v2Program`
+  const wordCounter = selvedge.program`
     /** Count word freq only if the word starts with q */
   `
     .returns<{ [word: string]: number }>()
     .model('gpt4')
     .options({ forceRegenerate: false })
-    .persist({ id: 'word-counter-90' });
+    .persist('word-counter-90');
   const result = await wordCounter("the quick brown fox jumps over the lazy dog");
   console.log("Result:", result);
   // console.log("Generated code:", wordCounter.state.generatedCode);
