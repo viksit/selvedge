@@ -1,4 +1,3 @@
-// Minimal v2 program definitions ported from callable-api.ts
 import { selvedge } from '../src';
 
 // Enable debug logging
@@ -14,14 +13,16 @@ selvedge.models({
 async function main() {
   console.log("Running word counter example...");
   const wordCounter = selvedge.program`
-    /** Count word freq only if the word starts with q */
+    /** Write a typescript program that
+     *  counts word freq only if the word starts with q 
+     **/
   `
     .returns<{ [word: string]: number }>()
-    .model('gpt4')
+    .model('claude')
     .options({ forceRegenerate: false })
-    .persist('word-counter-4');
+    .persist('word-counter-5');
   const result = await wordCounter("the quick brown fox jumps over the lazy dog");
   console.log("Result:", result);
-  // console.log("Generated code:", wordCounter.state.generatedCode);
+  console.log("Generated code:", wordCounter.state.generatedCode);
 }
 main().catch(console.error);
