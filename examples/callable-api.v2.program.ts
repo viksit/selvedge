@@ -25,7 +25,7 @@ export const wordCounter = v2Program`
   .persist({ id: 'word-counter-99' });
 
 // Wrap execution in an async function
-async function main() {
+async function main(): Promise<Record<string, number> | void> {
   try {
     console.log("Running word counter example...");
     
@@ -47,7 +47,7 @@ async function main() {
 }
 
 // Execute the main function
-main().catch(console.error);
+void main().catch(console.error);
 
 // // If you want to port the sentimentAnalyzer as a program (not a prompt), you can do so as well:
 // export const sentimentAnalyzer = v2Program`

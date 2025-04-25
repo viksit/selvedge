@@ -36,16 +36,6 @@ class ExecutionError extends ProgramError {
 }
 
 /**
- * Error when loading or saving cache fails.
- */
-class PersistenceError extends ProgramError {
-  constructor(message: string, cause?: Error) {
-    super(message, cause);
-    this.name = 'PersistenceError';
-  }
-}
-
-/**
  * Adapt input for code that uses string operations.
  */
 function adaptInputForCode(code: string, input: unknown): unknown {
@@ -161,8 +151,8 @@ export async function executeProgram<Ret = any>(
     throw new GenerationError('Code generation failed', e as Error);
   }
 
-  // 3) Persist new code
-  if (persistId) {
+  // 3) Persist new code if flagged
+  if (persistId && state.needsSave) {
     try {
       await store.save('program', persistId, {
         code: rawCode,
@@ -170,6 +160,8 @@ export async function executeProgram<Ret = any>(
         model: modelDef.model
       });
       debug('persistence', `Saved code id=${persistId}`);
+      // Clear save flag
+      state.needsSave = false;
     } catch (e) {
       debug('persistence', 'Save failed', e as Error);
     }
@@ -177,6 +169,8 @@ export async function executeProgram<Ret = any>(
 
   // 4) Execute
   const code = extractCodeFromResponse(rawCode);
+  // Populate generated code for inspection
+  state.generatedCode = code;
   const adapted = adaptInputForCode(code, input);
   try {
     return (await executeTypeScriptWithInput(code, adapted)) as Ret;

@@ -10,6 +10,10 @@ export interface ProgramBuilderState<Ret = any> {
   };
   examples?: Array<{ input: any; output: any }>;
   returnsType?: Ret;
+  /** Flag indicating that the generated code should be persisted */
+  needsSave?: boolean;
+  /** Generated code extracted from LLM response */
+  generatedCode?: string;
 }
 
 /**

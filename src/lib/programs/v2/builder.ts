@@ -14,7 +14,8 @@ export function options<Ret>(state: ProgramBuilderState<Ret>, options: Record<st
 }
 
 export function persist<Ret>(state: ProgramBuilderState<Ret>, persistence: { id: string;[key: string]: any }): ProgramBuilderState<Ret> {
-  return { ...state, persistence: { ...state.persistence, ...persistence } };
+  // Mark that the generated code should be saved
+  return { ...state, persistence: { ...state.persistence, ...persistence }, needsSave: true };
 }
 
 export function examples<Ret>(state: ProgramBuilderState<Ret>, examples: Array<{ input: any; output: any }>): ProgramBuilderState<Ret> {
