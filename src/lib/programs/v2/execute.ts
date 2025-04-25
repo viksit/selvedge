@@ -89,7 +89,7 @@ async function invokeAdapter(
       [
         {
           role: 'system',
-          content: 'You are a code generation assistant that produces clean, efficient code. Generate only the requested function without console.log statements, test cases, or usage examples. Focus on writing production-ready code with proper error handling and type safety. Return only the implementation code within a code block.'
+          content: 'You are a code generation assistant. Respond ONLY with the raw code block for the requested function, starting directly with ``` and ending directly with ```. Do NOT include *any* introductory text, explanations, examples, comments, or markdown formatting *outside* the code block. Do not issue any console.log statements, test cases, or usage examples either.'
         },
         { role: 'user', content: prompt }
       ],
@@ -135,16 +135,20 @@ export async function executeProgram<Ret = any>(
 
   // 1) Try cache
   if (persistId && !options.forceRegenerate) {
-    try {
-      const cached = await store.load('program', persistId);
-      const code = (cached as any)?.data?.code;
+    debug('persistence', `Attempting cache load for program '${persistId}'`);
+    const cachedData = await store.load('program', persistId);
+    // If cache miss (load returned null), log and proceed to generate
+    if (cachedData === null) {
+      debug('persistence', `Cache miss for program '${persistId}', generating...`);
+    } else {
+      debug('persistence', `Cache hit for program '${persistId}'`);
+      // Apply extractor to cached code as well
+      const code = extractCodeFromResponse(cachedData.code);
       if (code) {
-        debug('persistence', `Using cached code id=${persistId}`);
+        debug('persistence', `Using cleaned cached code id=${persistId}`);
         const adapted = adaptInputForCode(code, input);
         return (await executeTypeScriptWithInput(code, adapted)) as Ret;
       }
-    } catch (e) {
-      debug('persistence', 'Cache load failed', e as Error);
     }
   }
 
@@ -152,7 +156,8 @@ export async function executeProgram<Ret = any>(
   let rawCode: string;
   try {
     const prompt = buildPrompt(state.prompt, input, state.examples || []);
-    rawCode = await invokeAdapter(adapter, prompt, options.timeout);
+    const llmResponse = await invokeAdapter(adapter, prompt, options.timeout);
+    rawCode = extractCodeFromResponse(llmResponse);
   } catch (e) {
     throw new GenerationError('Code generation failed', e as Error);
   }
@@ -162,6 +167,7 @@ export async function executeProgram<Ret = any>(
     try {
       await store.save('program', persistId, {
         code: rawCode,
+        prompt: state.prompt,
         timestamp: Date.now(),
         model: modelDef.model
       });
@@ -172,7 +178,7 @@ export async function executeProgram<Ret = any>(
   }
 
   // 4) Execute
-  const code = extractCodeFromResponse(rawCode);
+  const code = rawCode;
   // Populate generated code for inspection
   state.generatedCode = code;
   const adapted = adaptInputForCode(code, input);

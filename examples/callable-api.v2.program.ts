@@ -19,7 +19,7 @@ async function main() {
     .returns<{ [word: string]: number }>()
     .model('gpt4')
     .options({ forceRegenerate: false })
-    .persist('word-counter-90');
+    .persist('word-counter-4');
   const result = await wordCounter("the quick brown fox jumps over the lazy dog");
   console.log("Result:", result);
   // console.log("Generated code:", wordCounter.state.generatedCode);

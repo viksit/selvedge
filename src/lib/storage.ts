@@ -364,7 +364,8 @@ export class Store {
             await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
             continue;
           }
-          throw new Error(`${type}s directory not found`);
+          debug('persistence', `Cache miss for ${type} "${name}". Type directory not found after retries.`);
+          return null;
         }
         
         if (!itemDirExists) {
@@ -373,7 +374,8 @@ export class Store {
             await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
             continue;
           }
-          throw new Error(`${type} "${name}" not found`);
+          debug('persistence', `Cache miss for ${type} "${name}". Item directory not found after retries.`);
+          return null;
         }
         
         // Read latest pointer
@@ -386,7 +388,8 @@ export class Store {
             await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
             continue;
           }
-          throw new Error(`Latest pointer for ${type} "${name}" not found`);
+          debug('persistence', `Cache miss for ${type} "${name}". Latest pointer not found after retries.`);
+          return null;
         }
         
         // Read and parse the latest pointer file with robust error handling
@@ -413,7 +416,8 @@ export class Store {
               await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
               continue;
             }
-            throw new Error(`Could not read latest pointer after multiple attempts: ${readError?.message || 'Unknown error'}`);
+            debug('persistence', `Cache miss for ${type} "${name}". Could not read latest pointer after retries.`);
+            return null;
           }
           
           // Check for empty content
@@ -423,7 +427,8 @@ export class Store {
               await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
               continue;
             }
-            throw new Error(`Latest pointer file is empty for ${type} "${name}"`);
+            debug('persistence', `Cache miss for ${type} "${name}". Latest pointer file is empty after retries.`);
+            return null;
           }
           
           // Parse JSON data
@@ -436,7 +441,8 @@ export class Store {
               await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
               continue;
             }
-            throw new Error(`Latest pointer is not a valid object for ${type} "${name}"`);
+            debug('persistence', `Cache miss for ${type} "${name}". Latest pointer is not a valid object after retries.`);
+            return null;
           }
           
           // Check for version field
@@ -446,7 +452,8 @@ export class Store {
               await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
               continue;
             }
-            throw new Error(`Invalid latest pointer (missing version) for ${type} "${name}"`);
+            debug('persistence', `Cache miss for ${type} "${name}". Invalid latest pointer after retries.`);
+            return null;
           }
           
           // Verify the version file exists before attempting to load it
@@ -459,7 +466,8 @@ export class Store {
               await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
               continue;
             }
-            throw new Error(`Latest pointer references non-existent version ${latest.version} for ${type} "${name}"`);
+            debug('persistence', `Cache miss for ${type} "${name}". Latest pointer references non-existent version file after retries.`);
+            return null;
           }
           
           debug('persistence', `Found latest version ${latest.version} for ${type} "${name}"`);
@@ -472,7 +480,8 @@ export class Store {
             await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
             continue;
           }
-          throw new Error(`Failed to parse latest pointer for ${type} "${name}": ${(parseError as Error).message}`);
+          debug('persistence', `Cache miss for ${type} "${name}". Error parsing latest pointer after retries.`);
+          return null;
         }
       } catch (error) {
         if (attempt < MAX_RETRIES - 1) {
@@ -480,13 +489,14 @@ export class Store {
           await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
           continue;
         }
-        debug('persistence', `Error loading ${type} "${name}": ${(error as Error).message}. All retries failed.`);
-        throw new Error(`Failed to load ${type} "${name}": ${(error as Error).message}`);
+        debug('persistence', `Cache miss for ${type} "${name}". Error loading after retries.`);
+        return null;
       }
     }
     
-    // This should never be reached due to the throws in the loop, but TypeScript needs a return
-    throw new Error(`Failed to load ${type} "${name}" after ${MAX_RETRIES} attempts`);
+    // This should never be reached due to the returns in the loop, but TypeScript needs a return
+    debug('persistence', `Cache miss for ${type} "${name}". All retries failed.`);
+    return null;
   }
   
   /**
