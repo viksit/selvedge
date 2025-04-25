@@ -12,9 +12,10 @@ describe('Template Placeholders', () => {
     `;
 
     // Test the initial method chaining
-    const withExamples = template.examples({
-      "test": "result"
-    });
+    const withExamples = template.examples([{
+      input: "test",
+      output: "result"
+    }]);
 
     expect(typeof withExamples.using).toBe('function');
 
