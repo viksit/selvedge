@@ -1,6 +1,6 @@
 // src/lib/programs/v2/state.ts
 
-export interface ProgramBuilderState {
+export interface ProgramBuilderState<Ret = any> {
   prompt?: string;
   model?: string;
   options?: Record<string, any>;
@@ -9,22 +9,24 @@ export interface ProgramBuilderState {
     [key: string]: any;
   };
   examples?: Array<{ input: any; output: any }>;
-  returnsType?: any;
+  returnsType?: Ret;
 }
 
 /**
  * Creates a new ProgramBuilderState.
  */
-export function createState(initial?: Partial<ProgramBuilderState>): ProgramBuilderState {
-  return { ...initial };
+export function createState<Ret = any>(
+  initial?: Partial<ProgramBuilderState<Ret>>
+): ProgramBuilderState<Ret> {
+  return { ...(initial as object) } as ProgramBuilderState<Ret>;
 }
 
 /**
  * Returns a new ProgramBuilderState with updated fields (immutable).
  */
-export function updateState(
-  state: ProgramBuilderState,
-  updates: Partial<ProgramBuilderState>
-): ProgramBuilderState {
-  return { ...state, ...updates };
+export function updateState<Ret = any>(
+  state: ProgramBuilderState<Ret>,
+  updates: Partial<ProgramBuilderState<Ret>>
+): ProgramBuilderState<Ret> {
+  return { ...state, ...(updates as object) } as ProgramBuilderState<Ret>;
 }

@@ -1,16 +1,16 @@
 // src/lib/programs/v2/proxy.ts
-import { createProgramBuilder, ProgramBuilder } from './factory';
+import { ProgramBuilder } from './factory';
 
 // Type for the callable builder
-export type CallableProgramBuilder = ProgramBuilder & ((input: any) => any);
+export type CallableProgramBuilder<Ret = any> = ProgramBuilder<Ret> & ((input: any) => Ret);
 
 /**
  * Wraps a ProgramBuilder in a Proxy to make it callable and preserve method/property access.
  * For now, calling the builder throws 'Not implemented' (to be replaced in later phases).
  */
-export function createCallableBuilder(builder: ProgramBuilder): CallableProgramBuilder {
+export function createCallableBuilder<Ret = any>(builder: ProgramBuilder<Ret>): CallableProgramBuilder<Ret> {
   // The callable function (stub for now)
-  const handlerFn = function (input: any) {
+  const handlerFn = function (_input: any): Ret {
     throw new Error('Program execution not implemented yet');
   };
 
@@ -18,27 +18,25 @@ export function createCallableBuilder(builder: ProgramBuilder): CallableProgramB
   const target = Object.assign(handlerFn, builder);
 
   return new Proxy(target, {
-    apply(_target, _thisArg, args) {
+    apply(_target, _thisArg, args: any[]) {
       if (args.length !== 1) {
         throw new Error('Program execution expected exactly one argument');
       }
       // Called as a function: builder(input)
-      return handlerFn.apply(builder, args[0]);
+      return handlerFn.call(builder, args[0]);
     },
     get(_target, prop, receiver) {
       if (typeof prop === 'string' && prop in builder) {
         const value = (builder as any)[prop];
-        // If method, return a Proxy-wrapped builder for chaining
         if (typeof value === 'function' && prop !== 'constructor') {
           return (...args: any[]) => {
-            const nextBuilder = value.apply(builder, args);
-            return createCallableBuilder(nextBuilder);
+            const next = value.apply(builder, args) as ProgramBuilder<any>;
+            return createCallableBuilder(next);
           };
         }
         return value;
       }
-      // Otherwise, fallback to target
       return Reflect.get(target, prop, receiver);
     }
-  }) as CallableProgramBuilder;
+  }) as CallableProgramBuilder<Ret>;
 }
