@@ -138,36 +138,36 @@ export function makeProgramCallable<T>(builder: any): ProgramBuilder<T> {
   if (builder[CALLABLE_MARKER]) {
     return builder as ProgramBuilder<T>;
   }
-  
+
   // Create a base function that will be our callable builder
-  const baseFunction = async function(...args: any[]) {
+  const baseFunction = async function (...args: any[]) {
     // When called as a function, build the program and then call it with the provided arguments
     const func = await builder.build({}, builder._executionOptions || {});
-    
+
     // Call the generated function with the provided arguments
     const result = func.apply(null, args);
-    
+
     // If the result is a Promise, return it directly, otherwise wrap it in a Promise
     return result instanceof Promise ? result : Promise.resolve(result);
   };
-  
+
   // First, directly wrap all method properties that should return program builders
   // This is the critical part - methods must be wrapped BEFORE they're copied to the base function
   const methodsThatReturnBuilder = ['withExamples', 'examples', 'using', 'options', 'returns', 'persist', 'save'];
   const wrappedMethods: Record<string, Function> = {};
-  
+
   methodsThatReturnBuilder.forEach(methodName => {
     const originalMethod = builder[methodName];
     if (typeof originalMethod === 'function') {
-      wrappedMethods[methodName] = function(...args: any[]) {
+      wrappedMethods[methodName] = function (...args: any[]) {
         const result = originalMethod.apply(builder, args);
-        
+
         // For persist and save methods, return the proxy itself to maintain object identity
         if (methodName === 'persist' || methodName === 'save') {
           // The actual work is done inside the method, we just need to return the proxy
           return proxy; // This will be defined later, but JavaScript hoisting makes it work
         }
-        
+
         // For other methods, always ensure the result is callable
         if (result && typeof result === 'object') {
           return makeProgramCallable(result);
@@ -176,7 +176,7 @@ export function makeProgramCallable<T>(builder: any): ProgramBuilder<T> {
       };
     }
   });
-  
+
   // Now copy all properties from the builder to the function, using our wrapped methods
   Object.getOwnPropertyNames(builder).forEach(prop => {
     if (prop !== 'constructor') {
@@ -187,10 +187,10 @@ export function makeProgramCallable<T>(builder: any): ProgramBuilder<T> {
       }
     }
   });
-  
+
   // Mark as callable
   (baseFunction as any)[CALLABLE_MARKER] = true;
-  
+
   // Create the proxy
   const proxy = new Proxy(baseFunction, {
     apply: (target, thisArg, args) => {
@@ -199,12 +199,12 @@ export function makeProgramCallable<T>(builder: any): ProgramBuilder<T> {
     get: (target, prop, receiver) => {
       // Get the property
       const value = Reflect.get(target, prop, receiver);
-      
+
       // Return the value - methods are already wrapped
       return value;
     }
   }) as ProgramBuilder<T>;
-  
+
   return proxy;
 }
 
@@ -227,7 +227,7 @@ export function createProgram<T = string>(
 
   // Examples for few-shot learning
   let exampleList: ProgramExample[] = [];
-  
+
   // Private storage for execution options
   let _executionOptions: ProgramExecutionOptions = {};
 
@@ -240,7 +240,7 @@ export function createProgram<T = string>(
     generatedCode: null as unknown as string | null,
     persistId: undefined as string | undefined,
     needsSave: false,
-    
+
     options(opts: ProgramExecutionOptions): ProgramBuilder<T> {
       _executionOptions = { ..._executionOptions, ...opts };
       // Store the options on the object as well, so they're preserved in clones
@@ -356,7 +356,7 @@ export function createProgram<T = string>(
 
       // Cache the generated code
       this.generatedCode = String(codeResponse) as unknown as typeof this.generatedCode;
-      
+
       // Log basic information about the generated code
       const codeLines = String(codeResponse).split('\n').length;
       debug('program', `Generated code: ${codeLines} lines`);
@@ -399,7 +399,7 @@ export function createProgram<T = string>(
           debug('program', "No cached code found - generating for the first time");
           this.needsSave = true; // Need to save if we're generating for the first time
         }
-        
+
         // Debug the model information
         const modelProvider = this.modelDef.provider;
         const modelName = this.modelDef.model;
@@ -410,12 +410,12 @@ export function createProgram<T = string>(
 
         // Store the generated code for future use
         this.generatedCode = String(code) as unknown as typeof this.generatedCode;
-        
+
         // Try to extract function name for better logging
         const functionNameMatch = String(code).match(/function\s+([a-zA-Z0-9_]+)/);
         const functionName = functionNameMatch ? functionNameMatch[1] : 'anonymous';
         debug('program', `Generated function: ${functionName}`);
-        
+
         // Save the generated code if we have a persist ID and need to save
         if (this.persistId && this.needsSave) {
           debug('persistence', `Saving program "${this.persistId}" to storage`);
@@ -467,7 +467,7 @@ export function createProgram<T = string>(
       debug('persistence', `Saving program: ${name}`);
       debug('persistence', `Store base path: ${store.getBasePath()}`);
       debug('persistence', `Store instance ID: ${(store as any).testId || 'undefined'}`);
-      
+
       // If we don't have generated code yet, generate it
       if (!this.generatedCode) {
         try {
@@ -492,19 +492,19 @@ export function createProgram<T = string>(
         model: this.modelDef,
         generatedCode: this.generatedCode
       };
-      
+
       debug('persistence', `Data prepared for storage, calling store.save...`);
 
       try {
         // Save to storage
         const versionId = await store.save('program', name, data);
         console.log(`Program saved with version ID: ${versionId}`);
-        
+
         // Verify the program exists after saving
         const programDir = path.join(store.getBasePath(), 'programs', name);
         const dirExists = await fs.access(programDir).then(() => true).catch(() => false);
         console.log(`Program directory exists after save: ${dirExists ? 'YES' : 'NO'} - ${programDir}`);
-        
+
         if (dirExists) {
           const files = await fs.readdir(programDir);
           console.log(`Files in program directory:`, files);
@@ -512,9 +512,9 @@ export function createProgram<T = string>(
       } catch (error) {
         console.log(`Error saving program:`, error);
       }
-      
+
       console.log(`-------------------------------------------------`);
-      
+
       // Save to storage (retry outside try/catch to propagate errors)
       await store.save('program', name, data);
 
@@ -524,10 +524,10 @@ export function createProgram<T = string>(
   };
 
   // Options method is already added to the builder object
-  
+
   // Store the execution options on the builder
   (builder as any)._executionOptions = _executionOptions;
-  
+
   // Make the builder callable
   const callableBuilder = makeProgramCallable(builder as unknown as ProgramBuilder<T>);
   return callableBuilder as ProgramBuilder<T>;
@@ -535,6 +535,7 @@ export function createProgram<T = string>(
 
 /**
  * Extract code blocks from a response
+ * TODO: should ideally use a markdown parser or some such
  */
 function extractCodeFromResponse(response: string): string {
   // Look for code blocks with markdown-style backticks
