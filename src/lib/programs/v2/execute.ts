@@ -5,6 +5,20 @@ import { store as defaultStore, Store } from '../../storage'; // Import Store ty
 import { ModelRegistry } from '../../models';
 import { ModelDefinition } from '../../types'; // Correct path from v2/ to lib/
 import { executeTypeScriptWithInput, executeTypeScriptDetailed } from './typescript';
+import * as z from 'zod';
+
+/**
+ * Tries to generate a basic TypeScript type string representation from a Zod schema.
+ * Note: This is a simplified initial implementation and might not cover all Zod types accurately.
+ * It primarily relies on the schema's description if available, otherwise falls back to 'any'.
+ */
+function zodToTsTypeString(schema: z.ZodType<any> | undefined): string {
+  if (!schema) {
+    return 'any /* Schema not provided */';
+  }
+  // Using description as a placeholder for a potential more complex conversion
+  return schema.description || 'any /* Could not infer specific type from schema */';
+}
 
 /**
  * Base error for execution pipeline.
@@ -62,19 +76,74 @@ function extractCodeFromResponse(response: string): string {
 /**
  * Build prompt by appending examples and current input.
  */
-function buildPrompt(
-  template: string,
-  input: unknown,
-  examples: Array<{ input: any; output: any }> = []
-): string {
-  let prompt = template;
-  for (const ex of examples) {
-    prompt += `\n\nInput: ${JSON.stringify(ex.input)}\nOutput: ${JSON.stringify(ex.output)}`;
+// function buildPrompt(
+//   template: string,
+//   input: unknown,
+//   examples: Array<{ input: any; output: any }> = []
+// ): string {
+//   let prompt = template;
+//   for (const ex of examples) {
+//     prompt += `\n\nInput: ${JSON.stringify(ex.input)}\nOutput: ${JSON.stringify(ex.output)}`;
+//   }
+//   prompt += `\n\nInput: ${JSON.stringify(input)}\nOutput:`;
+//   return prompt;
+// }
+export function buildPrompt(state: ProgramBuilderState<any>, input?: any): string {
+  const inputFormat = input !== undefined ? formatForPrompt(input) : 'any /* No input variable provided */';
+
+  // Use the new utility function to get the type string from the schema
+  const outputFormat = zodToTsTypeString(state.returnsSchema); // <<< Change here
+
+  const examplesString = (state.examples || [])
+    .map(ex => `Input:\n\`\`\`\n${formatForPrompt(ex.input)}\n\`\`\`\nOutput:\n\`\`\`\n${formatForPrompt(ex.output)}\n\`\`\``)
+    .join('\n\n');
+
+  // Define the context object based on the new prompt structure
+  const context = { // <<< Change structure here
+    prompt: state.prompt || 'Implement the logic.',
+    input_format: inputFormat,
+    output_format: outputFormat,
+    examples: examplesString || '/* No examples provided */'
+  };
+
+  // Replace placeholders in the system prompt
+  let filledPrompt = DEFAULT_SYSTEM_PROMPT;
+  for (const key in context) {
+    filledPrompt = filledPrompt.replace(`{${key}}`, context[key as keyof typeof context]); // <<< Change key type
   }
-  prompt += `\n\nInput: ${JSON.stringify(input)}\nOutput:`;
-  return prompt;
+
+  return filledPrompt;
 }
 
+const DEFAULT_SYSTEM_PROMPT = `
+You are an expert TypeScript programmer tasked with writing a single TypeScript function.
+Your goal is to write a function that takes 'input' as an argument and returns a value conforming to the 'ReturnType' definition provided.
+DO NOT ADD ANY EXPLANATION OR COMMENTS OUTSIDE THE FUNCTION BODY.
+ONLY OUTPUT THE TYPESCRIPT CODE BLOCK. NO MARKDOWN.
+
+Input format:
+\`\`\`typescript
+{input_format}
+\`\`\`
+
+Output type definition:
+\`\`\`typescript
+type ReturnType = {output_format};
+\`\`\`
+
+Your task: {prompt}
+
+Examples:
+{examples}
+
+Respond ONLY with the TypeScript code block for the function:
+\`\`\`typescript
+// Function signature: (input: InputType) => ReturnType
+function main(input: any): any {{
+  // Your code here
+}}
+\`\`\`
+`;
 /**
  * Invoke model via chat or complete endpoint.
  */
@@ -90,7 +159,7 @@ async function invokeAdapter(
       [
         {
           role: 'system',
-          content: 'You are a code generation assistant. Respond ONLY with the raw code block for the requested function, starting directly with ``` and ending directly with ```. Do NOT include *any* introductory text, explanations, examples, comments, or markdown formatting *outside* the code block. Do not issue any console.log statements, test cases, or usage examples either.'
+          content: DEFAULT_SYSTEM_PROMPT
         },
         { role: 'user', content: prompt }
       ],
