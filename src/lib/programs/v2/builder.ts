@@ -1,5 +1,6 @@
 // src/lib/programs/v2/builder.ts
 import { ProgramBuilderState } from './state';
+import { inferSchema } from '../../schema';
 
 export function prompt<Ret>(state: ProgramBuilderState<Ret>, prompt: string): ProgramBuilderState<Ret> {
   return { ...state, prompt };
@@ -26,7 +27,15 @@ export function examples<Ret>(state: ProgramBuilderState<Ret>, examples: Array<{
 // Overload: allow type-only invocation or with a value
 export function returns<NewRet>(state: ProgramBuilderState<any>, returnsType: NewRet): ProgramBuilderState<NewRet>;
 export function returns<NewRet>(state: ProgramBuilderState<any>, returnsType?: NewRet): ProgramBuilderState<NewRet> {
-  return { ...state, returnsType: returnsType as NewRet } as ProgramBuilderState<NewRet>;
+  // Infer Zod schema
+  const schema = inferSchema<NewRet>();
+
+  // Store both the original type hint (if provided) and the inferred schema
+  return {
+    ...state,
+    returnsType: returnsType as NewRet,
+    returnsSchema: schema
+  } as ProgramBuilderState<NewRet>;
 }
 
 /**

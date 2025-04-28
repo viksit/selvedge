@@ -1,5 +1,7 @@
 // src/lib/programs/v2/state.ts
 
+import * as z from 'zod';
+
 export interface ProgramBuilderState<Ret = any> {
   prompt?: string;
   model?: string;
@@ -7,6 +9,7 @@ export interface ProgramBuilderState<Ret = any> {
   persistId?: string;
   examples?: Array<{ input: any; output: any }>;
   returnsType?: Ret;
+  returnsSchema?: z.ZodType<Ret>;
   /** Generated code extracted from LLM response */
   generatedCode?: string;
   /** Flag to control unwrapping of execution result; default true (return only result) */
