@@ -19,7 +19,7 @@ async function main() {
   `
     .returns<{ [word: string]: number }>()
     .model('claude')
-    .options({ forceRegenerate: false })
+    .options({ forceRegenerate: true })
     .persist('word-counter-5');
   const result = await wordCounter("the quick brown fox jumps over the lazy dog");
   console.log("Result:", result);

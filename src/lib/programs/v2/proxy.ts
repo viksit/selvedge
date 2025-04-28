@@ -1,6 +1,6 @@
 // src/lib/programs/v2/proxy.ts
 import type { ProgramBuilder } from './factory';
-import { executeProgram } from './execute';
+import { executeProgram, ExecuteOptions } from './execute';
 import { debug } from '../../utils/debug';
 
 // For tracking proxy method calls
@@ -11,7 +11,7 @@ const proxyDebugEnabled = true;
  */
 export interface CallableProgramBuilder<Ret = any> {
   /** Execute the program with input */
-  (input: any): Promise<Ret>;
+  (input: any, options?: ExecuteOptions): Promise<Ret>;
   /** Set prompt and return new callable builder */
   prompt(prompt: string): CallableProgramBuilder<Ret>;
   /** Set model and return new callable builder */
@@ -40,10 +40,11 @@ export function createCallableBuilder<Ret = any>(builder: ProgramBuilder<Ret>): 
   debug('program', `Creating callable proxy for program builder`);
   
   // The callable function that executes the program
-  const handlerFn = async function (input: any): Promise<Ret> {
-    debug('program', `Callable proxy invoked with input type: ${typeof input}`);
+  const handlerFn = async function (input: any, options?: ExecuteOptions): Promise<Ret> {
+    debug('program', `Callable proxy invoked with input type: ${typeof input}, options: ${JSON.stringify(options)}`);
     debug('program', `Program state at execution: model=${builder.state.model}, has prompt=${!!builder.state.prompt}`);
-    return await executeProgram<Ret>(builder.state, input);
+    // Pass options (or default empty object) to executeProgram
+    return await executeProgram<Ret>(builder.state, input, options ?? {});
   };
 
   // Attach all properties/methods from builder to the function
@@ -55,18 +56,19 @@ export function createCallableBuilder<Ret = any>(builder: ProgramBuilder<Ret>): 
     apply(_target, _thisArg, args: any[]) {
       debug('program', `Proxy apply trap: executing program as function`);
       
-      if (args.length !== 1) {
-        debug('program', `Error: Program execution expected exactly one argument, got ${args.length}`);
-        throw new Error('Program execution expected exactly one argument');
+      // Allow 1 (input) or 2 (input, options) arguments
+      if (args.length < 1 || args.length > 2) {
+        debug('program', `Error: Program execution expected 1 or 2 arguments (input, [options]), got ${args.length}`);
+        throw new Error('Program execution expected 1 or 2 arguments (input, [options])');
       }
       if (!builder.state.model) {
         debug('program', 'Error: No model specified for program execution');
         throw new Error('No model specified for program execution');
       }
       
-      // Called as a function: builder(input)
-      // Return the promise from handlerFn
-      return handlerFn.call(builder, args[0]);
+      // Called as a function: builder(input, options?)
+      // Pass both input (args[0]) and options (args[1]) to handlerFn
+      return handlerFn.call(builder, args[0], args[1]);
     },
     get(_target, prop, receiver) {
       // Don't log Symbol properties to avoid noise

@@ -6,6 +6,7 @@ import { ModelRegistry } from '../../models';
 import { ModelDefinition } from '../../types'; // Correct path from v2/ to lib/
 import { executeTypeScriptWithInput, executeTypeScriptDetailed } from './typescript';
 import * as z from 'zod';
+import { formatForPrompt } from 'src/lib/utils/formatter';
 
 /**
  * Tries to generate a basic TypeScript type string representation from a Zod schema.
@@ -44,8 +45,8 @@ class GenerationError extends ProgramError {
  * Error during code execution in sandbox.
  */
 class ExecutionError extends ProgramError {
-  constructor(message: string, cause?: Error) {
-    super(message, cause);
+  constructor(message: string, public code?: string, public details?: { cause?: Error, [key: string]: any }) {
+    super(message, details?.cause); // Pass cause to parent if available
     this.name = 'ExecutionError';
   }
 }
@@ -76,30 +77,18 @@ function extractCodeFromResponse(response: string): string {
 /**
  * Build prompt by appending examples and current input.
  */
-// function buildPrompt(
-//   template: string,
-//   input: unknown,
-//   examples: Array<{ input: any; output: any }> = []
-// ): string {
-//   let prompt = template;
-//   for (const ex of examples) {
-//     prompt += `\n\nInput: ${JSON.stringify(ex.input)}\nOutput: ${JSON.stringify(ex.output)}`;
-//   }
-//   prompt += `\n\nInput: ${JSON.stringify(input)}\nOutput:`;
-//   return prompt;
-// }
 export function buildPrompt(state: ProgramBuilderState<any>, input?: any): string {
   const inputFormat = input !== undefined ? formatForPrompt(input) : 'any /* No input variable provided */';
-
+  debug('program', 'Input:', input)
   // Use the new utility function to get the type string from the schema
-  const outputFormat = zodToTsTypeString(state.returnsSchema); // <<< Change here
+  const outputFormat = zodToTsTypeString(state.returnsSchema);
 
   const examplesString = (state.examples || [])
     .map(ex => `Input:\n\`\`\`\n${formatForPrompt(ex.input)}\n\`\`\`\nOutput:\n\`\`\`\n${formatForPrompt(ex.output)}\n\`\`\``)
     .join('\n\n');
 
   // Define the context object based on the new prompt structure
-  const context = { // <<< Change structure here
+  const context = {
     prompt: state.prompt || 'Implement the logic.',
     input_format: inputFormat,
     output_format: outputFormat,
@@ -109,9 +98,12 @@ export function buildPrompt(state: ProgramBuilderState<any>, input?: any): strin
   // Replace placeholders in the system prompt
   let filledPrompt = DEFAULT_SYSTEM_PROMPT;
   for (const key in context) {
-    filledPrompt = filledPrompt.replace(`{${key}}`, context[key as keyof typeof context]); // <<< Change key type
+    const valueToReplace = context[key as keyof typeof context];
+    const placeholder = `{${key}}`;
+    filledPrompt = filledPrompt.replace(placeholder, valueToReplace);
   }
 
+  debug('program', 'Generated prompt:', filledPrompt);
   return filledPrompt;
 }
 
@@ -241,11 +233,9 @@ async function attemptCacheExecution<Ret = any>(
     }
     return { type: 'cache_hit', result };
 
-  } catch (executeError) {
-    // Errors during extraction or execution of cached code indicate corruption
-    debug('execution', `Execution error on cached code '${persistId}':`, executeError);
-    // Throw specific error to prevent proceeding with bad cache
-    throw new ExecutionError(`Execution failed on cached code for '${persistId}'. Cache may be corrupt.`, executeError as Error);
+  } catch (e) {
+    debug('execution', 'Execution error on previously generated code', (e as Error).message); // <<< Fix: Use error message
+    throw new ExecutionError('Execution failed on previously generated code', undefined, { cause: e as Error });
   }
 }
 
@@ -263,7 +253,7 @@ async function generateAndExecuteNewCode<Ret = any>(
   let rawCode: string;
   let llmResponse: string;
   try {
-    const fullPrompt = buildPrompt(state.prompt!, input, state.examples || []);
+    const fullPrompt = buildPrompt(state, input);
     llmResponse = await invokeAdapter(adapter, fullPrompt, options.timeout);
     rawCode = extractCodeFromResponse(llmResponse);
     if (!rawCode) {
@@ -291,12 +281,34 @@ async function generateAndExecuteNewCode<Ret = any>(
     } else {
       result = (await executeTypeScriptWithInput(executedCode, adapted)) as Ret;
     }
+
+    // --- 4. Validate Output ---
+    if (state.returnsSchema) {
+      debug('program:validate', 'Validating execution result against Zod schema...');
+      const parsed = state.returnsSchema.safeParse(result);
+      if (!parsed.success) {
+        debug('program:validate', 'Validation failed:', parsed.error.message); // Log simpler message
+        // Include detailed validation error in the ExecutionError
+        const validationErrors = JSON.stringify(parsed.error.format(), null, 2);
+        throw new ExecutionError(
+          `Output validation failed against the expected schema. Details:\n${validationErrors}`,
+          undefined,
+          { cause: parsed.error, generatedCode: executedCode, executionOutput: result }
+        );
+      } else {
+        debug('program:validate', 'Validation successful.');
+        // Use the parsed data potentially? For now, just validate.
+        // result = parsed.data; // Optional: Use parsed data if Zod transforms it
+      }
+    }
+    // << END VALIDATION LOGIC >>
+
     debug('program', 'New code executed successfully.');
     return { result, executedCode };
 
   } catch (e) {
     debug('execution', 'Execution error on newly generated code', e as Error);
-    throw new ExecutionError('Execution failed on newly generated code', e as Error);
+    throw new ExecutionError('Execution failed on newly generated code', undefined, { cause: e as Error });
   }
 }
 
@@ -349,7 +361,9 @@ export async function executeProgram<Ret = any>(
   const store = defaultStore; // Use the singleton store instance
 
   // --- 2. Cache Attempt ---
-  if (persistId && !options.forceRegenerate) {
+  // Check both state options and execution-time options for forceRegenerate
+  const shouldForceRegenerate = state.options?.forceRegenerate || options.forceRegenerate;
+  if (persistId && !shouldForceRegenerate) {
     // attemptCacheExecution handles load errors internally but throws on execution errors
     const cacheAttempt = await attemptCacheExecution<Ret>(persistId, store, input, options);
 

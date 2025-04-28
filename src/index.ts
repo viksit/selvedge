@@ -4,24 +4,13 @@
  * @packageDocumentation
  */
 
+// Export the main selvedge instance and version
 export { selvedge, version } from './lib/core';
-export * from './lib/types';
-export * from './lib/prompts';
 
-// Re-export model-related types
-export { ModelRegistry } from './lib/models';
-
-// Export storage and manager
-export { Store, store } from './lib/storage';
-export { SelvedgeManager, manager } from './lib/manager';
-
-// Export flow system
-export { 
-  flow, 
-  flowWithContext, 
-  validate, 
-  filter, 
-  parallel, 
-  transform, 
-  loadFlow 
-} from './lib/flow';
+// Export necessary types (can be adjusted based on final public API)
+export type { ModelDefinition, ModelProvider, SelvedgeInstance } from './lib/types';
+export type { Store } from './lib/storage';
+// Potentially export V2 types if needed externally?
+// export type { CallableProgramBuilder } from './lib/programs/v2/proxy'; 
+// export type { ProgramBuilderState } from './lib/programs/v2/state';
+// export type { ExecuteOptions } from './lib/programs/v2/execute';
