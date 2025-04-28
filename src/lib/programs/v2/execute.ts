@@ -79,7 +79,6 @@ function extractCodeFromResponse(response: string): string {
  */
 export function buildPrompt(state: ProgramBuilderState<any>, input?: any): string {
   const inputFormat = input !== undefined ? formatForPrompt(input) : 'any /* No input variable provided */';
-  debug('program', 'Input:', input)
   // Use the new utility function to get the type string from the schema
   const outputFormat = zodToTsTypeString(state.returnsSchema);
 
@@ -192,28 +191,29 @@ async function attemptCacheExecution<Ret = any>(
   input: unknown,
   options: ExecuteOptions
 ): Promise<CacheResult<Ret>> {
-  debug('persistence', `Attempting cache load for program '${persistId}'`);
+  debug('persistence', `[Cache] Attempting cache load for program '${persistId}'`);
   let cachedData: { code: string } | null = null;
   try {
     // Store.load now returns null on cache miss (file not found)
     cachedData = await store.load('program', persistId);
   } catch (loadError) {
     // Handle unexpected errors during the load process itself
-    debug('persistence', `Unexpected error loading cache for '${persistId}':`, loadError);
+    debug('persistence', `[Cache] Load error for '${persistId}':`, loadError);
     return { type: 'cache_error', error: loadError as Error };
   }
 
   if (cachedData === null) {
-    debug('persistence', `Cache miss for program '${persistId}'`);
+    debug('persistence', `[Cache] Miss for '${persistId}'`);
     return { type: 'cache_miss' };
   }
 
-  debug('persistence', `Cache hit for program '${persistId}'`);
+  debug('persistence', `[Cache] Hit for '${persistId}'. Executing cached code.`);
+  debug('persistence', 'Executing cached code with input:', input);
   try {
     // Apply extractor to cached code
     const code = extractCodeFromResponse(cachedData.code);
     if (!code) {
-      debug('persistence', `Cached code for '${persistId}' was empty after extraction.`);
+      debug('persistence', `[Cache] Cached code for '${persistId}' was empty after extraction.`);
       // Treat empty extracted code as a form of cache corruption
       return { type: 'cache_error', error: new Error(`Cached code for '${persistId}' is empty or invalid.`) };
     }
@@ -231,10 +231,11 @@ async function attemptCacheExecution<Ret = any>(
     } else {
       result = (await executeTypeScriptWithInput(code, adapted)) as Ret;
     }
+    debug('persistence', 'Cached code execution result:', result);
     return { type: 'cache_hit', result };
 
   } catch (e) {
-    debug('execution', 'Execution error on previously generated code', (e as Error).message); // <<< Fix: Use error message
+    debug('execution', `[Cache] Execution error on cached code for '${persistId}':`, e as Error);
     throw new ExecutionError('Execution failed on previously generated code', undefined, { cause: e as Error });
   }
 }
@@ -249,7 +250,7 @@ async function generateAndExecuteNewCode<Ret = any>(
   input: unknown,
   options: ExecuteOptions
 ): Promise<{ result: Ret; executedCode: string }> {
-  debug('llm', 'Invoking LLM for code generation');
+  debug('program', '[LLM] Generating new code...');
   let rawCode: string;
   let llmResponse: string;
   try {
@@ -265,6 +266,7 @@ async function generateAndExecuteNewCode<Ret = any>(
   }
 
   const executedCode = rawCode; // Use the extracted code for execution
+  debug('program', 'Generated code:', executedCode);
 
   // Populate generated code for inspection *before* execution attempt
   state.generatedCode = executedCode;
@@ -274,6 +276,7 @@ async function generateAndExecuteNewCode<Ret = any>(
     // Determine unwrapping behavior
     const unwrap = options.unwrapResult !== false; // Default true
 
+    debug('program', 'Executing newly generated code with input:', adapted);
     let result: Ret;
     if (!unwrap) {
       const { context } = executeTypeScriptDetailed(executedCode, adapted);
@@ -295,19 +298,14 @@ async function generateAndExecuteNewCode<Ret = any>(
           undefined,
           { cause: parsed.error, generatedCode: executedCode, executionOutput: result }
         );
-      } else {
-        debug('program:validate', 'Validation successful.');
-        // Use the parsed data potentially? For now, just validate.
-        // result = parsed.data; // Optional: Use parsed data if Zod transforms it
       }
     }
     // << END VALIDATION LOGIC >>
 
-    debug('program', 'New code executed successfully.');
+    debug('program', 'New code execution result:', result);
     return { result, executedCode };
 
   } catch (e) {
-    debug('execution', 'Execution error on newly generated code', e as Error);
     throw new ExecutionError('Execution failed on newly generated code', undefined, { cause: e as Error });
   }
 }
@@ -348,12 +346,13 @@ export async function executeProgram<Ret = any>(
 ): Promise<Ret> {
   // --- 1. Validation ---
   if (!state.model) throw new ProgramError('No model specified for program execution');
-  if (!state.prompt) throw new ProgramError('Missing prompt in state');
+  // Removed prompt check here, handled by buildPrompt fallback
 
-  debug('program', `executeProgram start model=${state.model}`);
+  debug('program', `Executing program. Model: ${state.model}, Options:`, options); // Log model and options
 
   const modelDef = ModelRegistry.getModel(state.model);
   if (!modelDef) throw new ProgramError(`Model not found: ${state.model}`);
+
   const adapter = ModelRegistry.getAdapter(modelDef);
   if (!adapter) throw new ProgramError(`Adapter not found for model: ${state.model}`);
 
@@ -373,10 +372,10 @@ export async function executeProgram<Ret = any>(
     } else if (cacheAttempt.type === 'cache_error') {
       // Log unexpected load error, but proceed to generate new code
       // Execution errors on cached code are thrown by attemptCacheExecution
-      debug('program', `Cache load error for '${persistId}', proceeding to generate:`, cacheAttempt.error);
+      debug('program', `[Cache] Load error for '${persistId}', generating new code. Error: ${cacheAttempt.error.message}`);
     } else {
       // Cache miss, proceed to generate
-      debug('program', `Cache miss for '${persistId}', proceeding to generate.`);
+      debug('program', `[Cache] Miss for '${persistId}', generating new code.`);
     }
   }
 

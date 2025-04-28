@@ -37,12 +37,10 @@ export interface CallableProgramBuilder<Ret = any> {
  * When called as a function, executes the program with the given input.
  */
 export function createCallableBuilder<Ret = any>(builder: ProgramBuilder<Ret>): CallableProgramBuilder<Ret> {
-  debug('program', `Creating callable proxy for program builder`);
   
   // The callable function that executes the program
   const handlerFn = async function (input: any, options?: ExecuteOptions): Promise<Ret> {
     debug('program', `Callable proxy invoked with input type: ${typeof input}, options: ${JSON.stringify(options)}`);
-    debug('program', `Program state at execution: model=${builder.state.model}, has prompt=${!!builder.state.prompt}`);
     // Pass options (or default empty object) to executeProgram
     return await executeProgram<Ret>(builder.state, input, options ?? {});
   };
@@ -50,9 +48,7 @@ export function createCallableBuilder<Ret = any>(builder: ProgramBuilder<Ret>): 
   // Attach all properties/methods from builder to the function
   const target = Object.assign(handlerFn, builder);
   
-  debug('program', `Builder properties attached to proxy function`);
-
-  return new Proxy(target, {
+  const proxy = new Proxy(target, {
     apply(_target, _thisArg, args: any[]) {
       debug('program', `Proxy apply trap: executing program as function`);
       
@@ -73,16 +69,16 @@ export function createCallableBuilder<Ret = any>(builder: ProgramBuilder<Ret>): 
     get(_target, prop, receiver) {
       // Don't log Symbol properties to avoid noise
       if (typeof prop === 'string' && proxyDebugEnabled) {
-        debug('program', `Proxy get trap: accessing property '${prop}'`);
+        // debug('program', `Proxy get trap: accessing property '${prop}'`);
       }
       
       if (typeof prop === 'string' && prop in builder) {
         const value = (builder as any)[prop];
         if (typeof value === 'function' && prop !== 'constructor') {
           return (...args: any[]) => {
-            debug('program', `Calling builder method: ${prop}(${args.map(a => typeof a).join(', ')})`);
+            // debug('program', `Calling builder method: ${prop}(${args.map(a => typeof a).join(', ')})`);
             const next = value.apply(builder, args) as ProgramBuilder<any>;
-            debug('program', `Method ${prop} returned new builder state, creating new proxy`);
+            // debug('program', `Method ${prop} returned new builder state, creating new proxy`);
             return createCallableBuilder(next);
           };
         }
@@ -91,4 +87,5 @@ export function createCallableBuilder<Ret = any>(builder: ProgramBuilder<Ret>): 
       return Reflect.get(target, prop, receiver);
     }
   }) as CallableProgramBuilder<Ret>;
+  return proxy;
 }

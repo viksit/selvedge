@@ -227,7 +227,6 @@ function makeTemplateCallable<T>(template: TemplateObject<T>): PromptTemplate<T>
   const proxy = new Proxy(baseFunction, {
     // apply trap will be called when the proxy is invoked as a function
     apply: (target, thisArg, args) => {
-      // debug('prompt', `Proxy apply trap called, template.persistId=${template.persistId}`);
       return target.apply(thisArg, args);
     },
 
@@ -236,7 +235,6 @@ function makeTemplateCallable<T>(template: TemplateObject<T>): PromptTemplate<T>
       // Direct access to properties we need live values for
       if (prop === 'persistId' || prop === 'needsSave' || prop === '_executionOptions') {
         const value = template[prop];
-        // debug('prompt', `Proxy direct property access: ${String(prop)}, value=${value}`);
         return value;
       }
 

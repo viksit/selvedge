@@ -63,9 +63,6 @@ export class Store {
    * @param dirPath Path to ensure exists
    */
   private async ensureDir(dirPath: string): Promise<void> {
-    debug('persistence', `Ensuring directory exists: ${dirPath}`);
-    debug('persistence', `Current base directory: ${this.baseDir}`);
-    
     // Implement retry logic to handle file system timing issues
     const MAX_RETRIES = 3;
     const RETRY_DELAY = 50; // ms
@@ -75,47 +72,13 @@ export class Store {
         // Make sure the base directory exists first
         await fsPromises.mkdir(this.baseDir, { recursive: true });
         
-        // Verify the base directory was created successfully
-        const baseExists = await fsPromises.access(this.baseDir).then(() => true).catch(() => false);
-        if (!baseExists) {
-          debug('persistence', `Base directory access failed: ${this.baseDir} (attempt ${attempt + 1}/${MAX_RETRIES})`);
-          if (attempt < MAX_RETRIES - 1) {
-            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
-            continue;
-          }
-          throw new Error(`Failed to access base directory ${this.baseDir}`);
-        }
-        
         // Create all parent directories if needed
         const parentDir = path.dirname(dirPath);
         await fsPromises.mkdir(parentDir, { recursive: true });
         
-        // Verify parent directory exists
-        const parentExists = await fsPromises.access(parentDir).then(() => true).catch(() => false);
-        if (!parentExists) {
-          debug('persistence', `Parent directory access failed: ${parentDir} (attempt ${attempt + 1}/${MAX_RETRIES})`);
-          if (attempt < MAX_RETRIES - 1) {
-            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
-            continue;
-          }
-          throw new Error(`Failed to access parent directory ${parentDir}`);
-        }
-        
         // Then create the requested directory
         await fsPromises.mkdir(dirPath, { recursive: true });
         
-        // Verify the directory was created
-        const dirExists = await fsPromises.access(dirPath).then(() => true).catch(() => false);
-        if (!dirExists) {
-          debug('persistence', `Directory access failed after creation: ${dirPath} (attempt ${attempt + 1}/${MAX_RETRIES})`);
-          if (attempt < MAX_RETRIES - 1) {
-            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
-            continue;
-          }
-          throw new Error(`Failed to access directory after creation ${dirPath}`);
-        }
-        
-        debug('persistence', `Successfully created/verified directory: ${dirPath}`);
         return; // Success - exit the function
       } catch (error: unknown) {
         const err = error as Error;
@@ -145,7 +108,6 @@ export class Store {
     }
     
     debug('persistence', `Saving ${type} with name: ${name}`);
-    debug('persistence', `Current base directory: ${this.baseDir}`);
     
     // Create directories if needed
     const typeDir = path.join(this.baseDir, type + 's');
@@ -161,8 +123,6 @@ export class Store {
       
       // Finally ensure the item directory exists
       await this.ensureDir(itemDir);
-      
-      debug('persistence', `All directories created successfully for ${type} ${name}`);
     } catch (error) {
       const err = error as Error;
       debug('persistence', `Failed to create directories for ${type} ${name}: ${err.message}`);
@@ -185,7 +145,6 @@ export class Store {
     
     // Save version
     const versionPath = path.join(itemDir, `${versionId}.json`);
-    debug('persistence', `Saving ${type} "${name}" version "${versionId}" to ${versionPath}`);
     
     // Implement retry logic for save operations
     const MAX_SAVE_RETRIES = 3;
@@ -296,7 +255,6 @@ export class Store {
             }
             
             // Success!
-            debug('persistence', `Successfully updated latest pointer for ${type} "${name}"`);
             break;
           } catch (parseErr) {
             debug('persistence', `Warning: Could not verify latest pointer contents: ${(parseErr as Error).message} (attempt ${latestAttempt + 1}/${MAX_LATEST_RETRIES})`);
