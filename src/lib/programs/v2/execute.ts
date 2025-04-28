@@ -107,9 +107,9 @@ export function buildPrompt(state: ProgramBuilderState<any>, input?: any): strin
 }
 
 const DEFAULT_SYSTEM_PROMPT = `
-You are an expert TypeScript programmer tasked with writing a single TypeScript function.
-Your goal is to write a function that takes 'input' as an argument and returns a value conforming to the 'ReturnType' definition provided.
-DO NOT ADD ANY EXPLANATION OR COMMENTS OUTSIDE THE FUNCTION BODY.
+You are an expert TypeScript programmer tasked with writing TypeScript code that solves a specific problem.
+Your goal is to write code that takes 'input' as an argument and returns a value conforming to the 'ReturnType' definition provided.
+DO NOT ADD ANY EXPLANATION OR COMMENTS OUTSIDE THE CODE.
 ONLY OUTPUT THE TYPESCRIPT CODE BLOCK. NO MARKDOWN.
 
 Input format:
@@ -127,14 +127,13 @@ Your task: {prompt}
 Examples:
 {examples}
 
-Respond ONLY with the TypeScript code block for the function:
+Respond ONLY with the TypeScript code block. You can use any design pattern (function, class, etc.) that best fits the solution:
 \`\`\`typescript
-// Function signature: (input: InputType) => ReturnType
-function main(input: any): any {{
-  // Your code here
-}}
+// Your TypeScript implementation here
+// This can be a function, class, or any appropriate structure
 \`\`\`
 `;
+
 /**
  * Invoke model via chat or complete endpoint.
  */
