@@ -1,141 +1,53 @@
-/**
- * Type definitions for the prompt template system
- */
+// prompts/types.ts
 import { ModelDefinition } from '../types';
 
-/**
- * Configuration options for prompt execution
- */
 export interface PromptExecutionOptions {
-  /** Model to use for this prompt execution */
   model?: ModelDefinition | string;
-
-  /** Temperature setting (0.0-1.0) for controlling randomness */
   temperature?: number;
-
-  /** Maximum number of tokens to generate */
   maxTokens?: number;
-
-  /** Top-p sampling parameter */
   topP?: number;
-
-  /** Frequency penalty */
   frequencyPenalty?: number;
-
-  /** Presence penalty */
   presencePenalty?: number;
-
-  /** Stop sequences */
   stop?: string[];
-
-  /** System message to use with chat models */
   system?: string;
-
-  /** Whether to stream the response */
   stream?: boolean;
-
-  /** Additional model-specific parameters */
-  [key: string]: any;
+  forceRegenerate?: boolean;
+  [k: string]: any;
 }
 
-/**
- * Variables passed to prompt templates
- */
 export type PromptVariables = Record<string, any>;
+export type VariableRenderer = (v: any) => string;
 
-/**
- * Function type for rendering a variable in a template
- */
-export type VariableRenderer = (value: any) => string;
-
-/**
- * A variable definition in a prompt template
- */
 export interface PromptVariable {
-  /** Name of the variable */
   name: string;
-
-  /** Custom renderer function for this variable */
   renderer?: VariableRenderer;
-
-  /** Original function from template */
   originalFn?: Function;
-
-  /** Default value to use if not provided */
   defaultValue?: any;
-
-  /** Description of the variable */
   description?: string;
 }
 
-/**
- * A segment of a prompt template
- */
 export type PromptSegment = string | PromptVariable;
 
-/**
- * A compiled prompt template
- */
 export interface PromptTemplate<T = any> {
-  /** Call signature - makes the template directly callable */
-  (variables?: PromptVariables, options?: PromptExecutionOptions): Promise<T>;
-
-  /** Array of text and variable segments */
+  (v?: PromptVariables, o?: PromptExecutionOptions): Promise<T>;
   segments: PromptSegment[];
-
-  /** List of variables used in this template */
   variables: PromptVariable[];
-
-  /** ID used for persistence, if this prompt has been persisted */
   persistId?: string;
-
-  /** Flag to track if the prompt needs to be saved */
   needsSave?: boolean;
-
-  /** Fill template with variables and return the rendered string */
-  render: (variables: PromptVariables) => string;
-
-  /** Execute this prompt with the given variables and return the response */
-  execute: <R = T>(variables: PromptVariables, options?: PromptExecutionOptions) => Promise<R>;
-
-  /** Get the expected return type of this prompt */
+  render: (v: PromptVariables) => string;
+  execute: <R = T>(v: PromptVariables, o?: PromptExecutionOptions) => Promise<R>;
   returns: <R = T>() => PromptTemplate<R>;
-
-  /** Format a response according to the expected return type */
-  formatResponse: (response: string) => T;
-
-  /** Add prefix text to the template */
-  prefix: (text: string) => PromptTemplate<T>;
-
-  /** Add suffix text to the template */
-  suffix: (text: string) => PromptTemplate<T>;
-
-  /** Clone this template */
+  formatResponse: (r: string) => T;
+  prefix: (t: string) => PromptTemplate<T>;
+  suffix: (t: string) => PromptTemplate<T>;
   clone: () => PromptTemplate<T>;
-
-  /** Add training examples to improve the prompt */
-  train: (examples: Array<{ text: any, output: T }>) => PromptTemplate<T>;
-
-  /** Specify the model to use for this prompt */
-  using: (model: string | import('../types').ModelDefinition) => PromptTemplate<T>;
-
-  /** Set execution options for this prompt */
-  options: (opts: PromptExecutionOptions) => PromptTemplate<T>;
-
-  /** Save this prompt for later use (legacy method) */
+  train: (e: { text: any; output: T }[]) => PromptTemplate<T>;
+  using: (m: string | ModelDefinition) => PromptTemplate<T>;
+  options: (o: PromptExecutionOptions) => PromptTemplate<T>;
   persist: (id: string) => PromptTemplate<T>;
-
-  /** 
-   * Save this prompt template with versioning
-   * @param name Name to save the prompt under
-   * @returns The prompt template for chaining
-   */
-  save: (name: string) => Promise<PromptTemplate<T>>;
+  save: (n: string) => Promise<PromptTemplate<T>>;
 }
 
-/**
- * Function to create type-safe prompt templates
- */
 export interface PromptTemplateFactory {
-  (strings: TemplateStringsArray, ...values: any[]): PromptTemplate;
+  (s: TemplateStringsArray, ...v: any[]): PromptTemplate;
 }

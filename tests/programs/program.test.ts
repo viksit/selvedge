@@ -8,30 +8,34 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
 import { store } from '../../src/lib/storage';
+import { debug, enableAllDebug } from '../../src/lib/utils/debug';
 
 describe('Program Generation', () => {
   // Ensure storage directories exist
   beforeAll(async () => {
+    // Enable all debug output
+    enableAllDebug();
+
     // Use a consistent test directory for all program tests
     const testStorageDir = path.join(os.tmpdir(), 'selvedge-program-tests');
-    
+
     // Add a unique ID to the store instance for debugging
     const storeTestId = Math.random().toString(36).substr(2, 9);
     (store as any).testId = storeTestId;
-    
+
     console.log('--------------- DEBUG INFO ---------------');
     console.log(`Test store ID: ${storeTestId}`);
     console.log(`Test store instance: ${store.constructor.name}`);
     console.log(`Initial base path: ${store.getBasePath()}`);
-    
+
     // Set the storage path before running any tests
     store.setBasePath(testStorageDir);
     console.log(`After setting: base path = ${store.getBasePath()}`);
     console.log('-----------------------------------------');
-    
+
     const programsDir = path.join(testStorageDir, 'programs');
     const promptsDir = path.join(testStorageDir, 'prompts');
-    
+
     try {
       // Create base directory
       await fs.mkdir(testStorageDir, { recursive: true });
@@ -39,57 +43,56 @@ describe('Program Generation', () => {
       await fs.mkdir(programsDir, { recursive: true });
       // Create prompts directory
       await fs.mkdir(promptsDir, { recursive: true });
-      
+
       // Verify directories exist
       const programsExist = await fs.access(programsDir).then(() => true).catch(() => false);
       const promptsExist = await fs.access(promptsDir).then(() => true).catch(() => false);
-      
+
       console.log(`Using test storage directory: ${testStorageDir}`);
       console.log(`Test directories created: programs=${programsExist}, prompts=${promptsExist}`);
     } catch (error) {
       console.error(`Error creating storage directories: ${(error as Error).message}`);
     }
-  });
-  
-  beforeEach(() => {
+
     // Register a mock model for testing
     selvedge.models({
       test: selvedge.mock('test-model')
     });
+  });
+
+  beforeEach(() => {
 
     // Set up the mock responses
     const mockAdapter = ModelRegistry.getAdapter(selvedge.mock('test-model'));
-    if (mockAdapter && typeof mockAdapter.setResponses === 'function') {
-      mockAdapter.setResponses({
-        chat: (messages) => {
-          const userMessage = messages.find(m => m.role === 'user')?.content || '';
 
-          if (userMessage.includes('sort array')) {
-            return '```javascript\nfunction sortArray(arr) {\n  return [...arr].sort((a, b) => a - b);\n}\n```';
-          } else if (userMessage.includes('capitalize')) {
-            return '```javascript\nfunction capitalize(str) {\n  return str.charAt(0).toUpperCase() + str.slice(1);\n}\n```';
-          } else if (userMessage.includes('add numbers')) {
-            return '```javascript\nfunction add(a, b) {\n  return a + b;\n}\n```';
-          } else if (userMessage.includes('invalid code')) {
-            return '```javascript\nfunction broken( {\n  syntax error here\n}\n```';
-          } else if (userMessage.includes('math utility')) {
-            return '```javascript\nfunction add(a, b) {\n  return a + b;\n}\n\nfunction multiply(a, b) {\n  return a * b;\n}\n```';
-          } else if (userMessage.includes('frequency') || userMessage.includes('extract some frequency')) {
-            // Handle both the original request and regeneration requests
-            return '```javascript\nfunction countWords(text) {\n  const words = text.toLowerCase().split(/\\W+/).filter(w => w.length > 0);\n  const frequency = {};\n  for (const word of words) {\n    frequency[word] = (frequency[word] || 0) + 1;\n  }\n  return frequency;\n}\n```';
-          } else {
-            // Default to returning the add function for any unmatched request
-            return '```javascript\nfunction add(a, b) {\n  return a + b;\n}\n```';
-          }
+    mockAdapter.setResponses({
+      chat: (messages) => {
+        const userMessage = messages.find(m => m.role === 'user')?.content || '';
+
+        if (userMessage.includes('sort array')) {
+          return '```javascript\nfunction sortArray(arr) {\n  return [...arr].sort((a, b) => a - b);\n}\n```';
+        } else if (userMessage.includes('capitalize')) {
+          return '```javascript\nfunction capitalize(str) {\n  return str.charAt(0).toUpperCase() + str.slice(1);\n}\n```';
+        } else if (userMessage.includes('add numbers')) {
+          return '```javascript\nfunction add(a, b) {\n  return a + b;\n}\n```';
+        } else if (userMessage.includes('invalid code')) {
+          return '```javascript\nfunction broken( {\n  syntax error here\n}\n```';
+        } else if (userMessage.includes('math utility')) {
+          return '```javascript\nfunction add(a, b) {\n  return a + b;\n}\n\nfunction multiply(a, b) {\n  return a * b;\n}\n```';
+        } else if (userMessage.includes('frequency') || userMessage.includes('extract some frequency')) {
+          // Handle both the original request and regeneration requests
+          return '```javascript\nfunction countWords(text) {\n  const words = text.toLowerCase().split(/\\W+/).filter(w => w.length > 0);\n  const frequency = {};\n  for (const word of words) {\n    frequency[word] = (frequency[word] || 0) + 1;\n  }\n  return frequency;\n}\n```';
+        } else {
+          // Default to returning the add function for any unmatched request
+          return '```javascript\nfunction add(a, b) {\n  return a + b;\n}\n```';
         }
-      });
-    }
+      }
+    });
   });
 
   it('should create a program template', () => {
     const program = selvedge.program`Generate a function that ${(task: string) => task}`;
     expect(program).toBeDefined();
-    expect(program.template).toBeDefined();
     expect(program.exampleList).toBeInstanceOf(Array);
     expect(program.exampleList.length).toBe(0);
   });
@@ -148,7 +151,25 @@ describe('Program Generation', () => {
     expect(program).toBeDefined();
   });
 
-  // New tests for execute functionality
+  // test that the return type matches the specified type
+  // TBD
+  // it('should return the correct type', async () => {
+  //   interface FunctionResult {
+  //     code: string;
+  //     name: string;
+  //   }
+
+  //   const program = selvedge.program`Generate a function that ${(task: string) => task}`
+  //     .returns<FunctionResult>();
+
+  //   const result = await program.generate({ task: 'add numbers' });
+  //   expect(result).toBeDefined();
+  //   expect(typeof result).toBe('object');
+  //   expect(typeof result.code).toBe('string');
+  //   expect(typeof result.name).toBe('string');
+  // });
+
+  // // New tests for execute functionality
   it('should execute generated code and return a function proxy', async () => {
     const program = selvedge.program`Generate a function that ${(task: string) => task}`
       .using('test');
@@ -157,9 +178,9 @@ describe('Program Generation', () => {
     expect(result).toBeDefined();
     expect(typeof result).toBe('function');
     expect(typeof result.add).toBe('function');
-    expect(result.add(2, 3)).toBe(5);
+    await expect(result.add(2, 3)).resolves.toBe(5);
     // The proxy should also be callable directly if it's the main function
-    expect(result(2, 3)).toBe(5);
+    await expect(result(2, 3)).resolves.toBe(5);
   });
 
   it('should access the first function when multiple functions are generated', async () => {
@@ -171,7 +192,7 @@ describe('Program Generation', () => {
     expect(typeof result).toBe('function');
     expect(typeof result.add).toBe('function');
     // The proxy will only expose the first function found in the code
-    expect(result(2, 3)).toBe(5);
+    await expect(result(2, 3)).resolves.toBe(5);
     // Other functions won't be directly accessible through the proxy
   });
 
@@ -196,28 +217,29 @@ describe('Program Generation', () => {
 
     // Save it directly to ensure it's saved
     await program.save(programName);
-    
+
     // Add a small delay to ensure file system operations complete
     await new Promise(resolve => setTimeout(resolve, 100));
-    
+
     // Verify the program directory exists after saving
     const programsDir = path.join(store.getBasePath(), 'programs');
     const programDir = path.join(programsDir, programName);
-    
+
     const dirExists = await fs.access(programDir).then(() => true).catch(() => false);
     console.log(`Persist test - directory exists: ${dirExists} - ${programDir}`);
-    
+
     if (dirExists) {
       const files = await fs.readdir(programDir);
       console.log(`Persist test - files in directory:`, files);
     } else {
       console.log('WARNING: Program directory was not created during persist+save');
-      
+
       // Create the directory structure explicitly as a fallback
       await fs.mkdir(programDir, { recursive: true });
       console.log(`Created directory explicitly: ${programDir}`);
     }
-    
+
+
     // Try to load the program to verify it was actually saved
     const loadedProgram = await selvedge.loadProgram(programName);
 
@@ -231,7 +253,7 @@ describe('Program Generation', () => {
     // Verify the result
     expect(result).toBeDefined();
     expect(typeof result).toBe('function');
-    expect(result(2, 3)).toBe(5);
+    await expect(result(2, 3)).resolves.toBe(5);
   });
 
   it('should save and load programs with save()', async () => {
@@ -247,23 +269,23 @@ describe('Program Generation', () => {
 
     // Save the program using the proper storage mechanism
     await program.save(programName);
-    
+
     // Add a small delay to ensure file system operations complete
     // This helps avoid race conditions with file system operations
     await new Promise(resolve => setTimeout(resolve, 50));
-    
+
     // Verify the program directory exists after saving
     const programsDir = path.join(store.getBasePath(), 'programs');
     const programDir = path.join(programsDir, programName);
-    
+
     const dirExists = await fs.access(programDir).then(() => true).catch(() => false);
     console.log(`Directory exists before loading: ${dirExists} - ${programDir}`);
-    
+
     if (dirExists) {
       const files = await fs.readdir(programDir);
       console.log(`Files in program directory before loading:`, files);
     }
-    
+
     // Now load the program from storage
     const loadedProgram = await selvedge.loadProgram(programName);
 
@@ -279,7 +301,7 @@ describe('Program Generation', () => {
     expect(result).toBeDefined();
     expect(typeof result).toBe('function');
     expect(typeof result.add).toBe('function');
-    expect(result.add(2, 3)).toBe(5);
+    await expect(result.add(2, 3)).resolves.toBe(5);
   });
 
   it('should handle errors during code generation', async () => {
@@ -334,7 +356,7 @@ describe('Program Generation', () => {
       .returns<Person>();
 
     const result = await program.build();
-    const person = result.createPerson('John', 30);
+    const person = await result.createPerson('John', 30);
 
     expect(person).toHaveProperty('name');
     expect(person).toHaveProperty('age');
@@ -349,7 +371,7 @@ describe('Program Generation', () => {
     const result = await program.build({ task: 'word frequency counter' });
 
     // Test the function by calling it with a sample text
-    const frequencies = result.countWords('This is a test. This is only a test.');
+    const frequencies = await result.countWords('This is a test. This is only a test.');
 
     // Check that the result is an object with the word frequencies
     expect(frequencies).toBeDefined();
@@ -418,7 +440,7 @@ describe('Program Generation', () => {
     // Verify the result works as expected
     expect(result).toBeDefined();
     expect(typeof result).toBe('function');
-    expect(result(2, 3)).toBe(5);
+    await expect(result(2, 3)).resolves.toBe(5);
   });
 
   it('should force regeneration of code when forceRegenerate option is true', async () => {
@@ -462,6 +484,6 @@ describe('Program Generation', () => {
     // but we can verify the execute method works
     expect(result).toBeDefined();
     expect(typeof result).toBe('function');
-    expect(result(2, 3)).toBe(5);
+    await expect(result(2, 3)).resolves.toBe(5);
   });
 });

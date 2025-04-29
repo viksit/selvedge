@@ -1,7 +1,7 @@
 import { selvedge } from '../src';
-
+import { inspect } from 'util';
 // Enable specific debug namespaces to see persistence-related logs
-selvedge.debug("*");
+// selvedge.debug("*");
 
 selvedge.models({
   claude: selvedge.anthropic('claude-3-5-haiku-20241022'),
@@ -10,22 +10,22 @@ selvedge.models({
 
 async function main() {
   // Example 1: Sentiment Analysis using callable prompt template
-  console.log('Example 1: Sentiment Analysis');
-  const sentimentAnalyzer = selvedge.prompt`
-    Analyze the sentiment in this text: ${text => text}
-    Respond with a JSON object containing score (-1.0 to 1.0), label, and confidence.
-    Include detailed rationale for the score.
-  `
-    .returns<{ score: number; label: string; confidence: number; rationale: string }>()
-    .using("claude")
-    .options({ temperature: 0.2 })
-    .persist("sentiment-test-99");
+  // console.log('Example 1: Sentiment Analysis');
+  // const sentimentAnalyzer = selvedge.prompt`
+  //   Analyze the sentiment in this text: ${text => text}
+  //   Respond with a JSON object containing score (-1.0 to 1.0), label, and confidence.
+  //   Include detailed rationale for the score.
+  // `
+  //   .returns<{ score: number; label: string; confidence: number; rationale: string }>()
+  //   .using("claude")
+  //   .options({ temperature: 0.2 })
+  //   .persist("sentiment-test-99");
 
-  // call it directly as a function!
-  const result = await sentimentAnalyzer({
-    text: "I absolutely love this product!"
-  });
-  console.log("Sentiment result:", result);
+  // // call it directly as a function!
+  // const result = await sentimentAnalyzer({
+  //   text: "I absolutely love this product!"
+  // });
+  // console.log("Sentiment result:", result);
   //console.log();
 
   // Example 2: Word Counter using callable program template
@@ -41,27 +41,27 @@ async function main() {
   `
     .returns<{ [word: string]: number }>()
     .using("gpt4")
-    .options({ forceRegenerate: false })
-    .persist("word-counter-99");
+    .options({ forceRegenerate: true })
+    .persist("word-counter-3");
 
   // Call it directly as a function
   const frequency = await wordCounter("This is a test. This is only a test.");
   console.log("Word frequency:", frequency);
 
-  // Example 3: Link both with a flow 
-  console.log('Example 3: Flow');
-  const simpleFlow = selvedge.flow([
-    // create a function that returns a sample object to give to sentiment analyzer
-    () => ({ text: "I absolutely love this product!" }),
-    sentimentAnalyzer,
-    // transform for wordcounter
-    (result) => (result.rationale),
-    wordCounter
-  ]);
+  // // Example 3: Link both with a flow 
+  // console.log('Example 3: Flow');
+  // const simpleFlow = selvedge.flow([
+  //   // create a function that returns a sample object to give to sentiment analyzer
+  //   () => ({ text: "I absolutely love this product!" }),
+  //   sentimentAnalyzer,
+  //   // transform for wordcounter
+  //   (result) => (result.rationale),
+  //   wordCounter
+  // ]);
 
-  // Execute the flow
-  const flowResult = await simpleFlow({});
-  console.log("Flow result:", flowResult);
+  // // Execute the flow
+  // const flowResult = await simpleFlow({});
+  // console.log("Flow result:", flowResult);
 
 }
 

@@ -23,6 +23,20 @@ const debugConfig: DebugConfig = {
 };
 
 /**
+ * Enable all debug namespaces
+ */
+export function enableAllDebug(): void {
+  debugConfig.enabled = true;
+  
+  // Enable all namespaces
+  Object.keys(debugConfig.namespaces).forEach(namespace => {
+    debugConfig.namespaces[namespace] = true;
+  });
+  
+  console.log('All debug namespaces enabled');
+}
+
+/**
  * Log a debug message if debugging is enabled for the given namespace
  * 
  * @param namespace - The debug namespace (e.g., 'program', 'persistence')
