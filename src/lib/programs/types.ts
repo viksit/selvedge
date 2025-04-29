@@ -95,7 +95,7 @@ export interface ProgramBuilder<T = string> {
   /** Set execution options for this program */
   options(opts: ProgramExecutionOptions): ProgramBuilder<T>;
 
-  /** Save this program for later use (legacy method) */
+  /** Save this program for later use */
   persist(id: string): ProgramBuilder<T>;
 
   /** 

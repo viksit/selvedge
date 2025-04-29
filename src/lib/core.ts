@@ -7,7 +7,7 @@ import { createTemplate, PromptTemplate } from './prompts';
 import { createProgram, ProgramBuilder } from './programs';
 import { store } from './storage';
 import { flow as createFlow } from './flow';
-import { enableDebug, enableNamespace, parseDebugString } from './utils/debug';
+import { enableDebug, enableNamespace, parseDebugString, debug } from './utils/debug';
 
 /**
  * The main Selvedge instance that provides access to all library functionality
@@ -143,7 +143,7 @@ export const selvedge: SelvedgeInstance = {
       config
     };
   },
-  
+
   /**
    * Create a mock model definition (for testing)
    * 
@@ -187,7 +187,6 @@ export const selvedge: SelvedgeInstance = {
    * ```
    */
   program<T = string>(strings: TemplateStringsArray, ...values: any[]): ProgramBuilder<T> {
-    // The createProgram function now handles making the builder callable
     return createProgram<T>(strings, values);
   },
 
@@ -213,7 +212,7 @@ export const selvedge: SelvedgeInstance = {
   prompt<T = any>(strings: TemplateStringsArray, ...values: any[]): PromptTemplate<T> {
     return createTemplate<T>(strings, values);
   },
-  
+
   /**
    * Load a saved program by name
    * 
@@ -238,39 +237,87 @@ export const selvedge: SelvedgeInstance = {
     console.log(`Load base path: ${store.getBasePath()}`);
     console.log(`Loading program: ${name}`);
     console.log('---------------------------------------------------');
-    
+
     // Load the program data from storage
     const data = await store.load('program', name, version);
-    
+
     // Create a base program builder with an empty template
     // Use a minimal template string to initialize the program builder
     const emptyTemplate = [''] as unknown as TemplateStringsArray;
     const builder = createProgram<T>(emptyTemplate, []);
-    
+
     // Reconstruct the program builder with the loaded data
     if (data && data.template) {
       // Replace the template properties
       builder.template.segments = data.template.segments;
       builder.template.variables = data.template.variables;
-      
+
       // Set examples and model
       if (data.examples) {
         builder.exampleList = data.examples;
       }
-      
+
       if (data.model) {
+        // First, store the original model definition
         builder.modelDef = data.model;
+
+        // For mock models, ensure we use the currently registered mock adapter
+        if (data.model.provider === ModelProvider.MOCK) {
+          const currentModel = ModelRegistry.getModel(data.model.model);
+          if (currentModel) {
+            debug('program', `Reconnecting mock model "${data.model.model}" to current adapter`);
+            builder.modelDef = currentModel;
+          }
+        }
       }
-      
+
       // Set the generated code if available
       if (data.generatedCode) {
-        builder.generatedCode = data.generatedCode;
+        // Try to validate the code using TypeScript's parser
+        try {
+          const ts = require('typescript');
+          const sourceFile = ts.createSourceFile(
+            'temp.ts',
+            String(data.generatedCode),
+            ts.ScriptTarget.Latest,
+            /*setParentNodes*/ false
+          );
+
+          // Check if we have at least one valid statement or declaration
+          const hasValidCode = sourceFile &&
+            sourceFile.statements &&
+            sourceFile.statements.length > 0 &&
+            // Check if it has at least one function declaration or expression
+            sourceFile.statements.some((stmt: any) =>
+              ts.isFunctionDeclaration(stmt) ||
+              (ts.isVariableStatement(stmt) &&
+                stmt.declarationList.declarations.some((decl: any) =>
+                  decl.initializer &&
+                  (ts.isFunctionExpression(decl.initializer) ||
+                    ts.isArrowFunction(decl.initializer))
+                ))
+            );
+
+          if (hasValidCode) {
+            debug('program', `Loaded valid code from storage (${data.generatedCode})`);
+            builder.generatedCode = data.generatedCode;
+          } else {
+            debug('program', `Loaded code does not contain valid functions, will regenerate`);
+            builder.generatedCode = null;
+          }
+        } catch (error: unknown) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          debug('program', `Error validating loaded code: ${errorMessage}`);
+          builder.generatedCode = null;
+        }
+      } else {
+        builder.generatedCode = null;
       }
     }
-    
+
     return builder as ProgramBuilder<T>;
   },
-  
+
   /**
    * List all saved programs
    * 
@@ -285,7 +332,7 @@ export const selvedge: SelvedgeInstance = {
   async listPrograms(): Promise<string[]> {
     return store.list('program');
   },
-  
+
   /**
    * List all versions of a saved program
    * 
@@ -301,7 +348,7 @@ export const selvedge: SelvedgeInstance = {
   async listProgramVersions(name: string): Promise<string[]> {
     return store.listVersions('program', name);
   },
-  
+
   /**
    * Load a saved prompt by name
    * 
@@ -321,24 +368,24 @@ export const selvedge: SelvedgeInstance = {
   async loadPrompt<T = any>(name: string, version?: string): Promise<PromptTemplate<T>> {
     // Load the prompt data from storage
     const data = await store.load('prompt', name, version);
-    
+
     // Create a base prompt template with empty segments
     const emptyTemplate = [''] as unknown as TemplateStringsArray;
     const template = createTemplate<T>(emptyTemplate, []);
-    
+
     // Reconstruct the prompt template with the loaded data
     if (data && data.segments) {
       // Replace the template properties
       template.segments = data.segments;
-      
+
       if (data.variables) {
         template.variables = data.variables;
       }
     }
-    
+
     return template;
   },
-  
+
   /**
    * List all saved prompts
    * 
@@ -353,7 +400,7 @@ export const selvedge: SelvedgeInstance = {
   async listPrompts(): Promise<string[]> {
     return store.list('prompt');
   },
-  
+
   /**
    * List all versions of a saved prompt
    * 
@@ -369,7 +416,7 @@ export const selvedge: SelvedgeInstance = {
   async listPromptVersions(name: string): Promise<string[]> {
     return store.listVersions('prompt', name);
   },
-  
+
   /**
    * Configure debug logging
    * 
@@ -393,7 +440,7 @@ export const selvedge: SelvedgeInstance = {
     } else {
       // Enable/disable debug globally
       enableDebug(config.enabled);
-      
+
       // Enable specific namespaces if provided
       if (config.namespaces) {
         config.namespaces.forEach(ns => enableNamespace(ns, true));

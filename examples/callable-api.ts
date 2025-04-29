@@ -1,7 +1,7 @@
 import { selvedge } from '../src';
-
+import { inspect } from 'util';
 // Enable specific debug namespaces to see persistence-related logs
-selvedge.debug("*");
+// selvedge.debug("*");
 
 selvedge.models({
   claude: selvedge.anthropic('claude-3-5-haiku-20241022'),
@@ -26,7 +26,7 @@ async function main() {
     text: "I absolutely love this product!"
   });
   console.log("Sentiment result:", result);
-  //console.log();
+  console.log();
 
   // Example 2: Word Counter using callable program template
   console.log('Example 2: Word Counter');
@@ -41,8 +41,8 @@ async function main() {
   `
     .returns<{ [word: string]: number }>()
     .using("gpt4")
-    .options({ forceRegenerate: false })
-    .persist("word-counter-99");
+    .options({ forceRegenerate: true })
+    .persist("word-counter-3");
 
   // Call it directly as a function
   const frequency = await wordCounter("This is a test. This is only a test.");

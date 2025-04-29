@@ -416,12 +416,6 @@ export function createTemplate<T = any>(
         ...options
       };
 
-      // Debug information about the execution
-      debug('prompt', `Executing prompt template with ${Object.keys(variables).length} variables`);
-      debug('prompt', `Variables: ${JSON.stringify(variables, null, 2)}`);
-      debug('prompt', `Template options: ${JSON.stringify(this._executionOptions || {}, null, 2)}`);
-      debug('prompt', `Call-time options: ${JSON.stringify(options, null, 2)}`);
-      debug('prompt', `Merged options: ${JSON.stringify(mergedOptions, null, 2)}`);
 
       // If we have a persist ID but haven't loaded yet, try to load it first
       debug('persistence', `execute(): checking persistence - persistId=${this.persistId}, needsSave=${this.needsSave}, forceRegenerate=${mergedOptions.forceRegenerate}`);

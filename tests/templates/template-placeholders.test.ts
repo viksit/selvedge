@@ -28,11 +28,9 @@ describe('Template Placeholders', () => {
 
     const result = withModel.persist("test-id");
 
-    // Check that the template exists in the result
-    expect(result).toHaveProperty('template');
-    // The template property can be a function or an object depending on implementation
-    expect(result.template).toBeDefined();
-    expect(result.template).not.toBeNull();
+    expect(result).toBeDefined();
+    expect(typeof result.build).toBe('function');
+    expect(typeof result.generate).toBe('function');
   });
 
   test('prompt template works with the new implementation', () => {

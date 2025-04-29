@@ -2,11 +2,6 @@
  * Program generation implementation
  */
 import { ProgramBuilder, ProgramExample, ProgramVariables, ProgramExecutionOptions } from './types';
-
-/**
- * Symbol used to mark a program builder as already callable
- */
-const CALLABLE_MARKER = Symbol('callable');
 import { createTemplate } from '../prompts/template';
 import { ModelRegistry } from '../models';
 import { ModelDefinition, ModelProvider } from '../types';
@@ -16,6 +11,9 @@ import * as path from 'path';
 import * as fs from 'fs/promises';
 import { store } from '../storage';
 import { debug } from '../utils/debug';
+import { PromptTemplate } from '@prompts/types';
+
+const CODE_GEN_SYSTEM_PROMPT = `You are a code generation assistant that produces clean, efficient code. Generate only the requested function without console.log statements, test cases, or usage examples. Focus on writing production-ready code with proper error handling and type safety. Return only the implementation code within a code block.`;
 
 /**
  * Compiles and evaluates TypeScript code, preserving type information
@@ -24,64 +22,46 @@ import { debug } from '../utils/debug';
  * @returns A proxy for the evaluated function
  */
 function evaluateTypeScript(code: string, functionName: string): any {
-  // Compile the TypeScript code to JavaScript
-  const result = ts.transpileModule(code, {
+  const cleanCode = typeof code === 'string'
+    ? code.replace(/\\n/g, '\n')
+      .replace(/\\"/g, '"')
+      .replace(/\\t/g, '\t')
+      .replace(/\\\\/g, '\\')
+    : code;
+
+  const result = ts.transpileModule(cleanCode, {
     compilerOptions: {
       target: ts.ScriptTarget.ES2020,
       module: ts.ModuleKind.CommonJS,
       strict: true,
-      esModuleInterop: true,
+      esModuleInterop: true
     },
     reportDiagnostics: true
   });
 
-  // Check for compilation errors
-  if (result.diagnostics && result.diagnostics.length > 0) {
-    const errors = result.diagnostics
-      .map(diag => ts.flattenDiagnosticMessageText(diag.messageText, '\n'));
+  if (result.diagnostics?.length) {
+    const errors = result.diagnostics.map(d =>
+      ts.flattenDiagnosticMessageText(d.messageText, '\n')
+    );
     throw new Error(`TypeScript compilation errors:\n${errors.join('\n')}`);
   }
 
-  // Create a sandbox context for evaluation
-  const sandbox: Record<string, any> = { exports: {}, console };
-  const context = vm.createContext(sandbox);
-
-  // Wrap the code in a module-like structure
   const wrappedCode = `
-    (function(exports) {
+    const exports = {};
+    (function (exports) {
       ${result.outputText}
       exports.${functionName} = ${functionName};
     })(exports);
+    exports;
   `;
 
-  // Execute the code in the sandbox
-  try {
-    vm.runInContext(wrappedCode, context);
-  } catch (error) {
-    debug('typescript', "Error evaluating compiled code:", error);
-    debug('typescript', "Compiled code:", result.outputText);
-    throw error;
-  }
-
-  // Extract the function from the sandbox
-  const func = sandbox.exports[functionName];
-  if (!func) {
-    throw new Error(`Function '${functionName}' not found in evaluated code`);
-  }
-
-  // Create a proxy for the function
-  return new Proxy(func, {
-    apply: (target, thisArg, args) => {
-      return target.apply(thisArg, args);
-    },
-    get: (target, prop) => {
-      if (prop === functionName) {
-        return target;
-      }
-      return target[prop];
-    }
-  });
+  const moduleNS = vm.runInThisContext(wrappedCode);
+  const func = moduleNS[functionName];
+  if (!func) throw new Error(`Function '${functionName}' not found`);
+  return func;
 }
+
+
 
 /**
  * Create a proxy for a generated function that allows direct calls
@@ -90,122 +70,449 @@ function evaluateTypeScript(code: string, functionName: string): any {
  * @returns A proxy object that can be called directly or accessed by function name
  */
 function createFunctionProxy(code: string): any {
+  // Clean up code that might have been loaded from storage and JSON-escaped
+  const cleanCode = typeof code === 'string'
+    ? code.replace(/\\n/g, '\n')
+      .replace(/\\"/g, '"')
+      .replace(/\\t/g, '\t')
+      .replace(/\\\\/g, '\\')
+    : code;
+
   // Extract function name using regex - try different patterns
-  let match = code.match(/function\s+([a-zA-Z0-9_]+)/);
+  let match = cleanCode.match(/function\s+([a-zA-Z0-9_]+)/);
 
   // If no match, try arrow function pattern
   if (!match) {
-    match = code.match(/const\s+([a-zA-Z0-9_]+)\s*=/);
+    match = cleanCode.match(/const\s+([a-zA-Z0-9_]+)\s*=/);
   }
 
   // If still no match, try class pattern
   if (!match) {
-    match = code.match(/class\s+([a-zA-Z0-9_]+)/);
+    match = cleanCode.match(/class\s+([a-zA-Z0-9_]+)/);
   }
 
   if (!match) {
-    debug('typescript', "Generated code:", code);
+    debug('typescript', "Generated code:", cleanCode);
     throw new Error("No function found in generated code");
   }
 
   const functionName = match[1];
+  debug('program', `Creating function proxy for ${functionName}`);
+  debug('program', `Original code type: ${typeof cleanCode}`);
+  debug('program', `Original code length: ${cleanCode.length}`);
+  debug('program', `Original code sample: ${cleanCode.substring(0, 100)}...`);
 
-  // Use our TypeScript evaluator to get the base proxy
-  const baseProxy = evaluateTypeScript(code, functionName);
+  // Use our TypeScript evaluator to get the raw function
+  const func = evaluateTypeScript(cleanCode, functionName);
 
-  // Create an enhanced proxy that cleans up object results
-  return new Proxy(baseProxy, {
+  // Create a comprehensive single proxy that handles all requirements
+  // Helper to wrap any function so it always returns a Promise
+  function makeAsync(fn: any) {
+    return (...args: any[]) => Promise.resolve(fn(...args));
+  }
+
+  return new Proxy(func, {
+    // Always make the main proxy async
     apply: (target, thisArg, args) => {
-      const result = target.apply(thisArg, args);
-
-      // If the result is an object, clean it up by removing Object prototype methods
-      if (result && typeof result === 'object' && !Array.isArray(result)) {
-        return Object.fromEntries(
-          Object.entries(result).filter(([key]) => !Object.prototype.hasOwnProperty(key))
-        );
-      }
-
-      return result;
+      return Promise.resolve(target.apply(thisArg, args));
     },
+    // For property access
+    get: (target, prop, receiver) => {
+      // If accessing the main function by name, return the async wrapper
+      if (prop === functionName) {
+        return makeAsync(target);
+      }
+      // If the property is a function, wrap it to always return a Promise
+      const value = target[prop as keyof typeof target];
+      if (typeof value === 'function') {
+        return makeAsync(value);
+      }
+      // Otherwise, return as-is
+      return value;
+    }
   });
 }
 
 /**
- * Helper function to create a callable proxy around a program builder
+ * Implementation of the ProgramBuilder interface
  */
-export function makeProgramCallable<T>(builder: any): ProgramBuilder<T> {
-  // Check if the builder is already callable
-  if (builder[CALLABLE_MARKER]) {
-    return builder as ProgramBuilder<T>;
+class ProgramBuilderImpl<T> {
+  template: PromptTemplate<T>;
+  exampleList: ProgramExample[];
+  modelDef: ModelDefinition;
+  _executionOptions: ProgramExecutionOptions;
+  generatedCode: string | null;
+  persistId?: string;
+  needsSave: boolean;
+
+  constructor(strings: TemplateStringsArray, values: any[]) {
+    this.template = createTemplate(strings, values);
+    this.modelDef = { provider: ModelProvider.OPENAI, model: 'gpt-4' };
+    this.exampleList = [];
+    this._executionOptions = {};
+    this.generatedCode = null;
+    this.needsSave = false;
   }
-  
-  // Create a base function that will be our callable builder
-  const baseFunction = async function(...args: any[]) {
-    // When called as a function, build the program and then call it with the provided arguments
-    const func = await builder.build({}, builder._executionOptions || {});
-    
-    // Call the generated function with the provided arguments
-    const result = func.apply(null, args);
-    
-    // If the result is a Promise, return it directly, otherwise wrap it in a Promise
-    return result instanceof Promise ? result : Promise.resolve(result);
-  };
-  
-  // First, directly wrap all method properties that should return program builders
-  // This is the critical part - methods must be wrapped BEFORE they're copied to the base function
-  const methodsThatReturnBuilder = ['withExamples', 'examples', 'using', 'options', 'returns', 'persist', 'save'];
-  const wrappedMethods: Record<string, Function> = {};
-  
-  methodsThatReturnBuilder.forEach(methodName => {
-    const originalMethod = builder[methodName];
-    if (typeof originalMethod === 'function') {
-      wrappedMethods[methodName] = function(...args: any[]) {
-        const result = originalMethod.apply(builder, args);
-        
-        // For persist and save methods, return the proxy itself to maintain object identity
-        if (methodName === 'persist' || methodName === 'save') {
-          // The actual work is done inside the method, we just need to return the proxy
-          return proxy; // This will be defined later, but JavaScript hoisting makes it work
-        }
-        
-        // For other methods, always ensure the result is callable
-        if (result && typeof result === 'object') {
-          return makeProgramCallable(result);
-        }
-        return result;
-      };
+
+  /**
+   * Create a shallow clone of this builder with shared methods
+   */
+  private clone(): ProgramBuilderImpl<T> {
+    const copy = new ProgramBuilderImpl<T>([] as any, []);
+    copy.template = this.template;
+    copy.exampleList = [...this.exampleList];
+    copy.modelDef = this.modelDef;
+    copy._executionOptions = { ...this._executionOptions };
+    copy.generatedCode = this.generatedCode;
+    copy.persistId = this.persistId;
+    copy.needsSave = this.needsSave;
+    return copy;
+  }
+
+  /**
+   * Set execution options for this program
+   */
+  options(opts: ProgramExecutionOptions): ProgramBuilder<T> {
+    const newBuilder = this.clone();
+    newBuilder._executionOptions = { ...this._executionOptions, ...opts };
+    return makeProgramCallable(newBuilder);
+  }
+
+  /**
+   * Add examples for few-shot learning
+   */
+  withExamples(newExamples: ProgramExample[]): ProgramBuilder<T> {
+    const newBuilder = this.clone();
+    newBuilder.exampleList = [...this.exampleList, ...newExamples];
+    return makeProgramCallable(newBuilder);
+  }
+
+  /**
+   * Add examples using a simpler input-output map
+   */
+  examples(inputOutputMap: Record<string, any>): ProgramBuilder<T> {
+    const newExamples: ProgramExample[] = Object.entries(inputOutputMap).map(([input, output]) => ({
+      input: { input },
+      output: typeof output === 'string' ? output : JSON.stringify(output, null, 2)
+    }));
+
+    return this.withExamples(newExamples);
+  }
+
+  /**
+   * Specify which model to use for code generation
+   */
+  using(model: ModelDefinition | string): ProgramBuilder<T> {
+    const newBuilder = this.clone();
+
+    if (typeof model === 'string') {
+      // Try to find model by alias
+      const resolvedModel = ModelRegistry.getModel(model);
+
+      if (!resolvedModel) {
+        throw new Error(`Model alias not found: ${model}`);
+      }
+
+      newBuilder.modelDef = resolvedModel;
+    } else {
+      // Use the provided model definition
+      newBuilder.modelDef = model;
     }
-  });
-  
-  // Now copy all properties from the builder to the function, using our wrapped methods
-  Object.getOwnPropertyNames(builder).forEach(prop => {
-    if (prop !== 'constructor') {
-      if (prop in wrappedMethods) {
-        (baseFunction as any)[prop] = wrappedMethods[prop];
-      } else {
-        (baseFunction as any)[prop] = (builder as any)[prop];
+
+    return makeProgramCallable(newBuilder);
+  }
+
+  /**
+   * Generate code using the specified model
+   */
+  async generate(variables: ProgramVariables = {}, options: ProgramExecutionOptions = {}): Promise<string> {
+    // Get the model to use
+    const modelToUse = options.model
+      ? (typeof options.model === 'string' ? ModelRegistry.getModel(options.model) : options.model)
+      : this.modelDef;
+
+    if (!modelToUse) {
+      throw new Error('No model specified for code generation');
+    }
+
+    // Get the adapter for this model
+    const adapter = ModelRegistry.getAdapter(modelToUse);
+    if (!adapter) {
+      throw new Error(`No adapter found for model ${modelToUse.provider}/${modelToUse.model}`);
+    }
+
+    // If we have cached code and aren't forcing regeneration, use it
+    if (this.generatedCode && !options.forceRegenerate) {
+      return this.generatedCode;
+    }
+
+    // Prepare the execution options
+    const execOptions = {
+      temperature: options.temperature || 0.2,
+      maxTokens: options.maxTokens,
+      ...options
+    };
+
+    // Prepare the messages for the chat
+    const messages = [
+      {
+        role: 'system',
+        content: CODE_GEN_SYSTEM_PROMPT
+      }
+    ];
+
+    // Add examples if available
+    if (this.exampleList.length > 0) {
+      for (const example of this.exampleList) {
+        messages.push({
+          role: 'user',
+          content: this.template.render(example.input)
+        });
+
+        messages.push({
+          role: 'assistant',
+          content: example.output
+        });
       }
     }
-  });
-  
-  // Mark as callable
-  (baseFunction as any)[CALLABLE_MARKER] = true;
-  
-  // Create the proxy
-  const proxy = new Proxy(baseFunction, {
-    apply: (target, thisArg, args) => {
-      return target.apply(thisArg, args);
-    },
-    get: (target, prop, receiver) => {
-      // Get the property
-      const value = Reflect.get(target, prop, receiver);
-      
-      // Return the value - methods are already wrapped
-      return value;
+
+    // Add the user message with the rendered template
+    messages.push({
+      role: 'user',
+      content: this.template.render(variables)
+    });
+
+    // Call the adapter to generate the code
+
+    const response = await adapter.chat(messages, execOptions);
+
+    // Extract the code from the response
+    const codeResponse = extractCodeFromResponse(response);
+
+    // Cache the generated code
+    this.generatedCode = String(codeResponse);
+    debug('program', `Generated code: ${String(codeResponse)}`);
+
+    // Mark as needing save if we have a persistId
+    if (this.persistId) {
+      this.needsSave = true;
     }
+
+    return codeResponse;
+  }
+
+  /**
+   * Load program code from storage if available
+   * @private
+   */
+  private async loadProgramFromStorage(): Promise<void> {
+    if (!this.persistId) return;
+
+    try {
+      debug('persistence', `Loading program "${this.persistId}" from storage`);
+      debug('persistence', `--------------- LOAD PROGRAM DEBUG ---------------`);
+      debug('persistence', `Load store ID: ${(store as any).testId || 'undefined'}`);
+      debug('persistence', `Load store instance: ${store.constructor.name}`);
+      debug('persistence', `Load base path: ${store.getBasePath()}`);
+      debug('persistence', `Loading program: ${this.persistId}`);
+      debug('persistence', `---------------------------------------------------`);
+
+      const loadedProgram = await store.load('program', this.persistId);
+      if (loadedProgram && loadedProgram.generatedCode) {
+        debug('persistence', `Found cached code for program "${this.persistId}"`);
+        this.generatedCode = loadedProgram.generatedCode;
+        debug('program', `Loaded code: ${this.generatedCode}`);
+        // If the model has changed, we should regenerate
+        if (loadedProgram.model &&
+          (loadedProgram.model.provider !== this.modelDef.provider ||
+            loadedProgram.model.model !== this.modelDef.model)) {
+          debug('program', "Model has changed, forcing regeneration");
+          this.generatedCode = null;
+          this.needsSave = true; // Need to save with the new model
+        }
+      } else {
+        debug('program', "No cached code found - generating for the first time");
+        this.needsSave = true; // Need to save if we're generating for the first time
+      }
+
+      // Debug the model information
+      const modelProvider = this.modelDef.provider;
+      const modelName = this.modelDef.model;
+      debug('program', `Using model: ${modelProvider}/${modelName}`);
+    } catch (error) {
+      debug('persistence', `Error loading program: ${error}`);
+    }
+  }
+
+  /**
+   * Build the program and return a callable function
+   */
+  async build(variables: ProgramVariables = {}, options: ProgramExecutionOptions = {}): Promise<any> {
+    // Merge _executionOptions (from .options()) with incoming options (call-time)
+    const mergedOptions = { ...this._executionOptions, ...options };
+    // Check if we need to load code from storage
+    if (this.persistId && !this.generatedCode && !mergedOptions.forceRegenerate) {
+      debug('program', `Loading program code from storage for program: ${this.persistId}`)
+      await this.loadProgramFromStorage();
+    }
+    // Generate code if we don't have it yet
+    if (!this.generatedCode || mergedOptions.forceRegenerate) {
+      debug('program', 'No cached code found - generating for the first time');
+      const code = await this.generate(variables, mergedOptions);
+
+      // Store the generated code for future use
+      this.generatedCode = String(code);
+      debug('program', `Generated code from LLM: ${this.generatedCode}`);
+
+      // Try to extract function name for better logging
+      const functionNameMatch = String(code).match(/function\s+([a-zA-Z0-9_]+)/);
+      const functionName = functionNameMatch ? functionNameMatch[1] : 'anonymous';
+      debug('program', `Generated function: ${functionName}`);
+
+      // Save the generated code if we have a persist ID and need to save
+      if (this.persistId && this.needsSave) {
+        debug('persistence', `Needs saving, saving program "${this.persistId}" to storage`);
+        try {
+          await this.save(this.persistId);
+          this.needsSave = false; // Reset the flag after successful save
+        } catch (error) {
+          debug('persistence', `Error saving program: ${error}`);
+          // Keep the needsSave flag true so we can retry later
+        }
+      }
+    }
+
+    // Create a function proxy from the generated code
+    const func = createFunctionProxy(this.generatedCode);
+    return func;
+  }
+
+  /**
+   * Specify the return type for the program
+   */
+  returns<U>(): ProgramBuilder<U> {
+    // This is just a type cast, no runtime behavior changes
+    return makeProgramCallable(this as unknown as ProgramBuilderImpl<U>);
+  }
+
+  /**
+   * Mark this program for persistence
+   */
+  persist(id: string): ProgramBuilder<T> {
+    this.persistId = id;
+    this.needsSave = true;
+    return makeProgramCallable(this);
+  }
+
+  /**
+   * Save this program to storage
+   */
+  async save(name: string): Promise<string> {
+    debug('persistence', `Saving program: ${name}`);
+    debug('persistence', `Store base path: ${store.getBasePath()}`);
+    debug('persistence', `Store instance ID: ${(store as any).testId || 'undefined'}`);
+
+    // If we don't have generated code yet, generate it
+    if (!this.generatedCode) {
+      try {
+        await this.generate();
+      } catch (error) {
+        debug('persistence', `Error generating code for save: ${error}`);
+        throw error;
+      }
+    }
+
+    // Set the persist ID if not already set
+    if (!this.persistId) {
+      this.persistId = name;
+    }
+
+    // Prepare the data to save
+    const data = {
+      template: {
+        segments: this.template.segments,
+        variables: this.template.variables
+      },
+      examples: this.exampleList,
+      model: this.modelDef,
+      generatedCode: this.generatedCode
+    };
+
+    debug('persistence', `Data prepared for storage, calling store.save...`);
+
+    try {
+      // Save to storage
+      const versionId = await store.save('program', name, data);
+      debug('persistence', `Program saved with version ID: ${versionId}`);
+
+      // Verify the program exists after saving
+      const programDir = path.join(store.getBasePath(), 'programs', name);
+      const dirExists = await fs.access(programDir).then(() => true).catch(() => false);
+      debug('persistence', `Program directory exists after save: ${dirExists ? 'YES' : 'NO'}`);
+
+      if (dirExists) {
+        const files = await fs.readdir(programDir);
+        debug('persistence', `Files in program directory: ${files}`);
+      }
+      return versionId;
+    } catch (error) {
+      debug('persistence', `Error saving program: ${error}`);
+      throw error;
+    }
+    // Save to storage (retry outside try/catch to propagate errors)
+    //return await store.save('program', name, data);
+
+  }
+}
+
+function makeProgramCallable<T>(builder: ProgramBuilderImpl<T>): ProgramBuilder<T> {
+  // compiled function cache (shared across all calls)
+  let compiledFn: any | null = null;
+  let compiling: Promise<void> | null = null;       // guards concurrent builds
+
+  const baseFunction = async function (...args: any[]) {
+    // step 1: compile once, lazily
+    if (!compiledFn) {
+      if (!compiling) {
+        // first arrival: start the build and remember the promise
+        compiling = builder.build().then(fn => {
+          compiledFn = fn;
+          compiling = null;
+        });
+      }
+      await compiling;                               // wait if another call is compiling
+    }
+
+    // step 2: execute compiled function with original arguments
+    return await compiledFn(...args);
+  } as any as { [k: string]: any } & ((...a: any[]) => Promise<any>);
+
+  const syncedProps = [
+    'generatedCode', 'persistId', 'needsSave', 'modelDef',
+    'exampleList', '_executionOptions', 'template'
+  ];
+
+  const sharedState: Record<string, any> = {};
+  syncedProps.forEach(p => (sharedState[p] = (builder as any)[p]));
+
+  syncedProps.forEach(p => Object.defineProperty(builder as any, p, {
+    get: () => sharedState[p],
+    set: v => { sharedState[p] = v; }
+  }));
+
+  for (const k of Object.getOwnPropertyNames(ProgramBuilderImpl.prototype)) {
+    if (k !== 'constructor' && typeof (builder as any)[k] === 'function') {
+      baseFunction[k] = (builder as any)[k].bind(builder);
+    }
+  }
+
+  return new Proxy(baseFunction, {
+    apply: (t, thisArg, a) => t.apply(thisArg, a),
+    get: (t, prop, r) =>
+      typeof prop === 'string' && syncedProps.includes(prop) ? sharedState[prop] : Reflect.get(t, prop, r),
+    set: (t, prop, val, r) =>
+      typeof prop === 'string' && syncedProps.includes(prop) ? (sharedState[prop] = val, true) : Reflect.set(t, prop, val, r)
   }) as ProgramBuilder<T>;
-  
-  return proxy;
 }
 
 /**
@@ -216,337 +523,25 @@ export function createProgram<T = string>(
   values: any[]
 ): ProgramBuilder<T> {
   debug('program', 'createProgram called with template string');
-  // Create the underlying prompt template
-  const template = createTemplate(strings, values);
+  debug('program', `Template string: ${strings}`);
+  debug('program', `Values: ${values}`);
+  // Create a new builder instance
+  const builder = new ProgramBuilderImpl<T>(strings, values);
 
-  // Default model to use
-  let modelDef: ModelDefinition = {
-    provider: ModelProvider.OPENAI,
-    model: 'gpt-4',
-  };
-
-  // Examples for few-shot learning
-  let exampleList: ProgramExample[] = [];
-  
-  // Private storage for execution options
-  let _executionOptions: ProgramExecutionOptions = {};
-
-  // Using an interface without the callable signature for the initial builder
-  // The makeProgramCallable function will convert this to a fully callable ProgramBuilder<T>
-  const builder = {
-    template,
-    exampleList,
-    modelDef, // Add modelDef property to the builder object
-    generatedCode: null as unknown as string | null,
-    persistId: undefined as string | undefined,
-    needsSave: false,
-    
-    options(opts: ProgramExecutionOptions): ProgramBuilder<T> {
-      _executionOptions = { ..._executionOptions, ...opts };
-      // Store the options on the object as well, so they're preserved in clones
-      (this as any)._executionOptions = _executionOptions;
-      return makeProgramCallable(this as unknown as ProgramBuilder<T>);
-    },
-
-    withExamples(newExamples: ProgramExample[]): ProgramBuilder<T> {
-      // Create a new builder with the updated examples
-      const newBuilder = { ...this } as unknown as ProgramBuilder<T>;
-      newBuilder.exampleList = [...exampleList, ...newExamples];
-      return makeProgramCallable(newBuilder);
-    },
-
-    examples(inputOutputMap: Record<string, any>): ProgramBuilder<T> {
-      // Convert the input-output map to ProgramExample array
-      const newExamples: ProgramExample[] = Object.entries(inputOutputMap).map(([input, output]) => ({
-        input: { input },
-        output: typeof output === 'string' ? output : JSON.stringify(output, null, 2)
-      }));
-
-      // Create a new builder with the updated examples
-      return this.withExamples(newExamples);
-      // Note: No need to wrap with makeProgramCallable here since withExamples already does it
-    },
-
-    using(model: ModelDefinition | string): ProgramBuilder<T> {
-      // Create a new builder with the updated model
-      const newBuilder = { ...this } as unknown as ProgramBuilder<T>;
-
-      if (typeof model === 'string') {
-        // Try to find model by alias
-        const resolvedModel = ModelRegistry.getModel(model);
-
-        if (!resolvedModel) {
-          throw new Error(`Model alias not found: ${model}`);
-        }
-
-        newBuilder.modelDef = resolvedModel;
-      } else {
-        // Use the provided model definition
-        newBuilder.modelDef = model;
-      }
-
-      return makeProgramCallable(newBuilder);
-    },
-
-    async generate(variables: ProgramVariables = {}, options: ProgramExecutionOptions = {}): Promise<T> {
-      // Get the model to use
-      const modelToUse = options.model
-        ? (typeof options.model === 'string' ? ModelRegistry.getModel(options.model) : options.model)
-        : this.modelDef;
-
-      if (!modelToUse) {
-        throw new Error('No model specified for code generation');
-      }
-
-      // Get the adapter for this model
-      const adapter = ModelRegistry.getAdapter(modelToUse);
-      if (!adapter) {
-        throw new Error(`No adapter found for model ${modelToUse.provider}/${modelToUse.model}`);
-      }
-
-      // If we have cached code and aren't forcing regeneration, use it
-      if (this.generatedCode && !options.forceRegenerate) {
-        return this.generatedCode as unknown as T;
-      }
-
-      // We'll let execute() handle all the logging to avoid duplication
-      // This method is called by execute(), so we don't need to log here
-
-      // Prepare the execution options
-      const execOptions = {
-        temperature: options.temperature || 0.2,
-        maxTokens: options.maxTokens,
-        ...options
-      };
-
-      // Prepare the messages for the chat
-      let messages = [
-        {
-          role: 'system',
-          content: 'You are a code generation assistant that produces clean, efficient code. Generate only the requested function without console.log statements, test cases, or usage examples. Focus on writing production-ready code with proper error handling and type safety. Return only the implementation code within a code block.'
-        }
-      ];
-
-      // Add examples if available
-      if (this.exampleList.length > 0) {
-        for (const example of this.exampleList) {
-          messages.push({
-            role: 'user',
-            content: this.template.render(example.input)
-          });
-
-          messages.push({
-            role: 'assistant',
-            content: example.output
-          });
-        }
-      }
-
-      // Add the current request
-      messages.push({
-        role: 'user',
-        content: this.template.render(variables)
-      });
-
-      // Execute the model
-      const response = await adapter.chat(messages, execOptions);
-
-      // Process the response to extract just the code
-      const codeResponse = extractCodeFromResponse(response);
-
-      // Cache the generated code
-      this.generatedCode = String(codeResponse) as unknown as typeof this.generatedCode;
-      
-      // Log basic information about the generated code
-      const codeLines = String(codeResponse).split('\n').length;
-      debug('program', `Generated code: ${codeLines} lines`);
-
-      return codeResponse as unknown as T;
-    },
-
-    async build(variables: ProgramVariables = {}, options: ProgramExecutionOptions = {}): Promise<any> {
-      try {
-        // If we have a persist ID but no generated code yet, try to load it first
-        if (this.persistId && !this.generatedCode && !options.forceRegenerate) {
-          try {
-            const existingProgram = await store.load('program', this.persistId);
-            if (existingProgram && existingProgram.generatedCode) {
-              this.generatedCode = existingProgram.generatedCode;
-              debug('persistence', `Loaded existing code from program "${this.persistId}"`);
-              this.needsSave = false; // Don't need to save if we loaded existing code
-            } else {
-              this.needsSave = true; // Need to save if we couldn't load existing code
-            }
-          } catch (error) {
-            // If loading fails, we'll generate new code below
-            debug('persistence', `No existing program "${this.persistId}" found or error loading it`);
-            this.needsSave = true; // Need to save if we couldn't load existing code
-          }
-        }
-
-        // If we already have generated code and aren't forcing regeneration, use it directly
-        if (this.generatedCode && !options.forceRegenerate) {
-          debug('program', "Using existing generated code - no LLM call needed");
-          const proxy = createFunctionProxy(String(this.generatedCode));
-          return proxy;
-        }
-
-        // Log if we're forcing regeneration
-        if (options.forceRegenerate) {
-          debug('program', "forceRegenerate option is true - regenerating code");
-          this.needsSave = true; // Need to save if we're forcing regeneration
-        } else if (!this.generatedCode) {
-          debug('program', "No cached code found - generating for the first time");
-          this.needsSave = true; // Need to save if we're generating for the first time
-        }
-        
-        // Debug the model information
-        const modelProvider = this.modelDef.provider;
-        const modelName = this.modelDef.model;
-        debug('program', `Using model: ${modelProvider}/${modelName}`);
-
-        // Generate the code
-        const code = await this.generate(variables, options);
-
-        // Store the generated code for future use
-        this.generatedCode = String(code) as unknown as typeof this.generatedCode;
-        
-        // Try to extract function name for better logging
-        const functionNameMatch = String(code).match(/function\s+([a-zA-Z0-9_]+)/);
-        const functionName = functionNameMatch ? functionNameMatch[1] : 'anonymous';
-        debug('program', `Generated function: ${functionName}`);
-        
-        // Save the generated code if we have a persist ID and need to save
-        if (this.persistId && this.needsSave) {
-          debug('persistence', `Saving program "${this.persistId}" to storage`);
-          try {
-            // Use await to properly wait for the save operation to complete
-            await this.save(this.persistId);
-            debug('persistence', `Successfully saved program "${this.persistId}" to storage`);
-            // Reset the flag after successful save
-            this.needsSave = false;
-          } catch (error) {
-            debug('persistence', `Error saving program "${this.persistId}":`, error);
-            // Don't reset the needsSave flag if saving failed
-          }
-        }
-
-        const proxy = createFunctionProxy(String(code));
-        return proxy;
-      } catch (error) {
-        debug('program', "Error executing program:", error);
-        throw error;
-      }
-    },
-
-    returns<R>(): ProgramBuilder<R> {
-      debug('program', 'Original returns<R>() method called');
-      // Create a new builder with the updated return type
-      const typedBuilder = { ...this } as any;
-      debug('program', 'returns() created new builder, making callable');
-      const result = makeProgramCallable<R>(typedBuilder);
-      debug('program', 'returns() final result callable?', typeof result === 'function');
-      return result;
-    },
-
-    persist(id: string): ProgramBuilder<T> {
-      // Store the persist ID
-      this.persistId = id;
-      this.needsSave = true;
-
-      // For testing purposes - this is checked in tests
-      debug('program', `Program "${id}" has been persisted for later use`);
-
-      // Instead of trying to load/save here, we'll defer to execute()
-      // This prevents duplicate saves and allows execute() to handle all persistence logic
-      return this as unknown as ProgramBuilder<T>;
-    },
-
-    async save(name: string): Promise<ProgramBuilder<T>> {
-      debug('persistence', `--------------- PROGRAM SAVE DEBUG ---------------`);
-      debug('persistence', `Saving program: ${name}`);
-      debug('persistence', `Store base path: ${store.getBasePath()}`);
-      debug('persistence', `Store instance ID: ${(store as any).testId || 'undefined'}`);
-      
-      // If we don't have generated code yet, generate it
-      if (!this.generatedCode) {
-        try {
-          debug('persistence', `No generated code, generating now...`);
-          await this.generate({});
-          debug('persistence', `Code generated successfully`);
-        } catch (error) {
-          debug('persistence', `Error generating code:`, error);
-          debug('program', `Could not pre-generate code for program "${name}". Will store template only.`);
-        }
-      } else {
-        debug('persistence', `Using existing generated code`);
-      }
-
-      // Prepare data for storage
-      const data = {
-        template: {
-          segments: this.template.segments,
-          variables: this.template.variables
-        },
-        examples: this.exampleList,
-        model: this.modelDef,
-        generatedCode: this.generatedCode
-      };
-      
-      debug('persistence', `Data prepared for storage, calling store.save...`);
-
-      try {
-        // Save to storage
-        const versionId = await store.save('program', name, data);
-        console.log(`Program saved with version ID: ${versionId}`);
-        
-        // Verify the program exists after saving
-        const programDir = path.join(store.getBasePath(), 'programs', name);
-        const dirExists = await fs.access(programDir).then(() => true).catch(() => false);
-        console.log(`Program directory exists after save: ${dirExists ? 'YES' : 'NO'} - ${programDir}`);
-        
-        if (dirExists) {
-          const files = await fs.readdir(programDir);
-          console.log(`Files in program directory:`, files);
-        }
-      } catch (error) {
-        console.log(`Error saving program:`, error);
-      }
-      
-      console.log(`-------------------------------------------------`);
-      
-      // Save to storage (retry outside try/catch to propagate errors)
-      await store.save('program', name, data);
-
-      // Return this for chaining
-      return this as unknown as ProgramBuilder<T>;
-    }
-  };
-
-  // Options method is already added to the builder object
-  
-  // Store the execution options on the builder
-  (builder as any)._executionOptions = _executionOptions;
-  
-  // Make the builder callable
-  const callableBuilder = makeProgramCallable(builder as unknown as ProgramBuilder<T>);
-  return callableBuilder as ProgramBuilder<T>;
+  // Make it callable
+  return makeProgramCallable(builder);
 }
 
 /**
  * Extract code blocks from a response
  */
 function extractCodeFromResponse(response: string): string {
-  // Look for code blocks with markdown-style backticks
   const codeBlockRegex = /```(?:\w+)?\s*([\s\S]*?)```/g;
   const matches = [...response.matchAll(codeBlockRegex)];
 
   if (matches.length > 0) {
-    // Return the content of the first code block
     return matches[0][1].trim();
   }
 
-  // If no code blocks found, return the entire response
-  // but try to clean it up a bit
   return response.trim();
 }
