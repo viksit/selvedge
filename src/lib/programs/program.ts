@@ -12,12 +12,6 @@ import * as fs from 'fs/promises';
 import { store } from '../storage';
 import { debug } from '../utils/debug';
 import { PromptTemplate } from '@prompts/types';
-import { serialize, deserialize } from 'v8';
-
-/**
- * Symbol used to mark a program builder as already callable
- */
-const CALLABLE_MARKER = Symbol('callable');
 
 const CODE_GEN_SYSTEM_PROMPT = `You are a code generation assistant that produces clean, efficient code. Generate only the requested function without console.log statements, test cases, or usage examples. Focus on writing production-ready code with proper error handling and type safety. Return only the implementation code within a code block.`;
 
@@ -470,78 +464,6 @@ class ProgramBuilderImpl<T> {
 
   }
 }
-
-/**
- * Helper function to create a callable proxy around a program builder
- */
-// function makeProgramCallable<T>(builder: ProgramBuilderImpl<T>): ProgramBuilder<T> {
-//   // Create a base function that forwards to builder.build
-//   const baseFunction = function (...args: any[]) {
-//     return builder.build(...args);
-//   } as any as { [key: string]: any } & ((...args: any[]) => Promise<any>);
-
-//   // Properties that need to be synchronized between proxy and builder
-//   const syncedProps = [
-//     'generatedCode', 'persistId', 'needsSave', 'modelDef',
-//     'exampleList', '_executionOptions', 'template'
-//   ];
-
-//   // Create a shared state object
-
-//   const sharedState: { [key: string]: any } = {};
-
-//   // Initialize shared state with current builder values
-//   syncedProps.forEach(prop => {
-//     if (prop in builder) {
-//       sharedState[prop] = (builder as any)[prop];
-//     }
-//   });
-
-//   // Replace direct property access with accessors that use the shared state
-//   syncedProps.forEach(prop => {
-//     if (prop in builder) {
-//       Object.defineProperty(builder as any, prop, {
-//         get: () => sharedState[prop],
-//         set: (value) => { sharedState[prop] = value; },
-//         enumerable: true,
-//         configurable: true
-//       });
-//     }
-//   });
-
-//   // Copy all methods from the builder to the function
-//   for (const key of Object.getOwnPropertyNames(ProgramBuilderImpl.prototype)) {
-//     if (key !== 'constructor' && typeof (builder as any)[key] === 'function') {
-//       baseFunction[key] = (builder as any)[key].bind(builder);
-//     }
-//   }
-
-//   // Create a proxy that forwards property access to the shared state
-//   const proxy = new Proxy(baseFunction, {
-//     apply: (target, thisArg, args) => target.apply(thisArg, args),
-//     get: (target, prop, receiver) => {
-//       // If the property is in our shared state, return from there
-//       if (typeof prop === 'string' && syncedProps.includes(prop)) {
-//         return sharedState[prop];
-//       }
-
-//       // Otherwise get it from the target
-//       return Reflect.get(target, prop, receiver);
-//     },
-//     set: (target, prop, value, receiver) => {
-//       // If the property is in our shared state, set it there
-//       if (typeof prop === 'string' && syncedProps.includes(prop)) {
-//         sharedState[prop] = value;
-//         return true;
-//       }
-
-//       // Otherwise set it on the target
-//       return Reflect.set(target, prop, value, receiver);
-//     }
-//   }) as ProgramBuilder<T>;
-
-//   return proxy;
-// }
 
 function makeProgramCallable<T>(builder: ProgramBuilderImpl<T>): ProgramBuilder<T> {
   // compiled function cache (shared across all calls)
