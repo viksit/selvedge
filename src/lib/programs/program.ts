@@ -107,7 +107,15 @@ function createFunctionProxy(code: string): any {
     return (...args: any[]) => Promise.resolve(fn(...args));
   }
   return new Proxy(func, {
-    apply: (target, thisArg, args) => Promise.resolve(target.apply(thisArg, args)),
+    apply: (target, thisArg, args) => {
+      const callResult = target.apply(thisArg, args);
+      return Promise.resolve(callResult).then((result: any) => {
+        if (result && typeof result === 'object' && !Array.isArray(result) && typeof result !== 'function') {
+          return Object.assign(Object.create(null), result);
+        }
+        return result;
+      });
+    },
     get: (target, prop, receiver) => {
       if (prop === functionName) return makeAsync(target);
       const value = target[prop as keyof typeof target];
