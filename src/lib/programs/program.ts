@@ -45,6 +45,79 @@ function evaluateTypeScript(code: string): any {
   }
 }
 
+// --- Utility: Create a function proxy from generated code ---
+function createFunctionProxy(code: string): any {
+  // Clean up code from possible JSON escapes
+  const cleanCode = typeof code === 'string'
+    ? code.replace(/\\n/g, '\n')
+      .replace(/\"/g, '"')
+      .replace(/\\t/g, '\t')
+      .replace(/\\\\/g, '\\')
+    : code;
+
+  // Try to extract function name (function, const, class)
+  let match = cleanCode.match(/function\s+([a-zA-Z0-9_]+)/);
+  if (!match) match = cleanCode.match(/const\s+([a-zA-Z0-9_]+)\s*=/);
+  if (!match) match = cleanCode.match(/class\s+([a-zA-Z0-9_]+)/);
+
+  if (!match) {
+    debug('typescript', "Generated code:", cleanCode);
+    throw new Error("No function found in generated code");
+  }
+  const functionName = match[1];
+  debug('program', `Creating function proxy for ${functionName}`);
+
+  // Wrap and evaluate code, extract function
+  const transpiled = ts.transpileModule(cleanCode, {
+    compilerOptions: {
+      target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.CommonJS,
+      esModuleInterop: true,
+      strict: false,
+      noImplicitAny: false,
+    }
+  });
+  if (transpiled.diagnostics && transpiled.diagnostics.length > 0) {
+    const errors = transpiled.diagnostics.map(d =>
+      ts.flattenDiagnosticMessageText(d.messageText, '\n')
+    );
+    debug('program', "TypeScript compilation errors: %O", errors);
+    throw new Error(`TypeScript compilation errors:\n${errors.join('\n')}`);
+  }
+  const wrappedCode = `
+    const exports = {};
+    (function (exports) {
+      ${transpiled.outputText}
+      exports.${functionName} = ${functionName};
+    })(exports);
+    exports;
+  `;
+  let moduleNS: any;
+  try {
+    moduleNS = vm.runInThisContext(wrappedCode);
+  } catch (e: any) {
+    debug('program', "Error executing VM: %O", e);
+    throw new Error(`Error executing generated code: ${e.message}`);
+  }
+  const func = moduleNS[functionName];
+  if (!func) throw new Error(`Function '${functionName}' not found`);
+
+  // Proxy for async and named property access
+  function makeAsync(fn: any) {
+    return (...args: any[]) => Promise.resolve(fn(...args));
+  }
+  return new Proxy(func, {
+    apply: (target, thisArg, args) => Promise.resolve(target.apply(thisArg, args)),
+    get: (target, prop, receiver) => {
+      if (prop === functionName) return makeAsync(target);
+      const value = target[prop as keyof typeof target];
+      if (typeof value === 'function') return makeAsync(value);
+      return value;
+    }
+  });
+}
+
+
 // --- Utility: Extract code from LLM response ---
 function extractCodeFromResponse(response: string): string {
   const match = response.match(/```(?:[a-zA-Z0-9_\-]+)?\n([\s\S]*?)\n```/);
@@ -89,6 +162,13 @@ class ProgramBuilderImpl<T> extends BuilderBase<ProgramExecutionOptions> {
   // Fluent API: returns
   returns<U>(): ProgramBuilder<U> {
     return makeProgramCallable(this as unknown as ProgramBuilderImpl<U>);
+  }
+
+  // Fluent API: using
+  using(model: string | ModelDefinition): ProgramBuilder<T> {
+    const copy = this._clone();
+    copy._executionOptions = { ...this._executionOptions, model };
+    return makeProgramCallable(copy);
   }
 
   // Persistence
@@ -141,12 +221,30 @@ class ProgramBuilderImpl<T> extends BuilderBase<ProgramExecutionOptions> {
       fullPrompt = `${examplesString}\n\n${fullPrompt}`;
     }
     const systemPrompt = process.env.CODE_GEN_SYSTEM_PROMPT || "You are an expert code generation AI. Given a description or a task, you will generate high-quality, runnable code. Only output the code itself, with no additional explanation, commentary, or markdown formatting unless it's part of the code (e.g. in a comment block).";
-    if (systemPrompt) fullPrompt = `${systemPrompt}\n\n${fullPrompt}`;
     const llmOptions = {
       temperature: options.temperature ?? this._executionOptions.temperature,
       maxTokens: options.maxTokens ?? this._executionOptions.maxTokens,
     };
-    const response = await modelAdapter.complete(fullPrompt, llmOptions);
+    let response: string;
+    // Use chat endpoint for chat models, completion otherwise
+    if (
+      finalModelDef.provider === ModelProvider.MOCK ||
+      finalModelDef.provider === ModelProvider.ANTHROPIC ||
+      finalModelDef.model.includes('gpt-')
+    ) {
+      // Use chat interface: system prompt as system message, prompt as user message
+      const messages = [];
+      if (systemPrompt) {
+        messages.push({ role: 'system', content: systemPrompt });
+      }
+      messages.push({ role: 'user', content: fullPrompt });
+      response = await modelAdapter.chat(messages, llmOptions);
+    } else {
+      // Use completion interface, prepend system prompt if present
+      let completionPrompt = fullPrompt;
+      if (systemPrompt) completionPrompt = `${systemPrompt}\n\n${fullPrompt}`;
+      response = await modelAdapter.complete(completionPrompt, llmOptions);
+    }
     const generated = extractCodeFromResponse(response);
     debug('program', 'Generated code: %s', generated.substring(0, 100) + '...');
     this.generatedCode = generated;
@@ -154,7 +252,7 @@ class ProgramBuilderImpl<T> extends BuilderBase<ProgramExecutionOptions> {
   }
 
   // --- Core: Build (generate or load from storage) ---
-  async build(forceRegenerate = false): Promise<string> {
+  async build(forceRegenerate = false): Promise<any> {
     debug('program', 'build called, forceRegenerate:', forceRegenerate);
     if (this.persistId && !this.needsSave && !forceRegenerate) {
       const loadedProgram = await store.load('program', this.persistId);
@@ -162,7 +260,7 @@ class ProgramBuilderImpl<T> extends BuilderBase<ProgramExecutionOptions> {
         this.generatedCode = loadedProgram.code;
         if (this.generatedCode == null)
           throw new Error("No code generated");
-        return this.generatedCode;
+        return createFunctionProxy(this.generatedCode);
       }
     }
     if (!this.generatedCode || forceRegenerate || this.needsSave) {
@@ -174,9 +272,9 @@ class ProgramBuilderImpl<T> extends BuilderBase<ProgramExecutionOptions> {
           // needsSave remains true if save fails
         }
       }
-      return this.generatedCode!;
+      return createFunctionProxy(this.generatedCode!);
     }
-    return this.generatedCode!;
+    return createFunctionProxy(this.generatedCode!);
   }
 
   // --- Private: clone for immutability ---
