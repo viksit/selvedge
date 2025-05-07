@@ -61,13 +61,21 @@ describe('Program Generation', () => {
   });
 
   beforeEach(() => {
-
     // Set up the mock responses
     const mockAdapter = ModelRegistry.getAdapter(selvedge.mock('test-model'));
 
     mockAdapter.setResponses({
       chat: (messages) => {
         const userMessage = messages.find(m => m.role === 'user')?.content || '';
+        debug('selvedge:test:program:mock', "Received userMessage in mock:", JSON.stringify(userMessage)); // Log every message
+
+        // --- Debug checks for frequency related messages ---
+        if (userMessage.includes("word frequency counter") || userMessage.includes("frequency") || userMessage.includes("extract some frequency")) {
+            debug('selvedge:test:program:mock', "userMessage is relevant to frequency checks.");
+            debug('selvedge:test:program:mock', "userMessage.includes('frequency'):", userMessage.includes('frequency'));
+            debug('selvedge:test:program:mock', "userMessage.includes('extract some frequency'):", userMessage.includes('extract some frequency'));
+        }
+        // --- End of debug checks ---
 
         if (userMessage.includes('sort array')) {
           return '```javascript\nfunction sortArray(arr) {\n  return [...arr].sort((a, b) => a - b);\n}\n```';

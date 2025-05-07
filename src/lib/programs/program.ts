@@ -285,27 +285,63 @@ class ProgramBuilderImpl<T> extends BuilderBase<ProgramExecutionOptions> {
   }
 
   // --- Core: Build (generate or load from storage) ---
-  async build(forceRegenerate = false): Promise<any> {
-    debug('program', 'build called, forceRegenerate:', forceRegenerate);
+  async build(variables: ProgramVariables = {}, buildOptions: ProgramExecutionOptions & { forceRegenerate?: boolean } = {}): Promise<any> {
+    const { forceRegenerate = false, ...executionOpts } = buildOptions;
+    debug('program', 'build called with variables: %o, executionOptions: %o, forceRegenerate: %s', variables, executionOpts, forceRegenerate);
+
     if (this.persistId && !this.needsSave && !forceRegenerate) {
       const loadedProgram = await store.load('program', this.persistId);
       if (loadedProgram && loadedProgram.code && !this.generatedCode) {
+        // TODO: Consider if loadedProgram was generated with different variables than `variables` now passed to build.
+        // For now, if loaded, use its code. A more robust solution might compare/invalidate.
+        debug('program', 'Using loaded code from persisted program: %s', this.persistId);
         this.generatedCode = loadedProgram.code;
-        if (this.generatedCode == null)
-          throw new Error("No code generated");
+        if (this.generatedCode == null) {
+          debug('program', 'Error: Loaded program has null code for %s', this.persistId);
+          throw new Error("No code generated or loaded");
+        }
         return createFunctionProxy(this.generatedCode);
       }
     }
-    if (!this.generatedCode || forceRegenerate || this.needsSave) {
-      await this.generate();
+
+    // Determine if generation is needed
+    const needsToGenerate = !this.generatedCode || forceRegenerate || this.needsSave;
+    debug('program', 'Build: needsToGenerate = %s (generatedCode: %s, forceRegenerate: %s, needsSave: %s)',
+      needsToGenerate, !!this.generatedCode, forceRegenerate, this.needsSave);
+
+    if (needsToGenerate) {
+      // Use variables passed to build(), fallback to empty if none.
+      // Merge executionOpts from build() with existing this._executionOptions.
+      const finalOptions = { ...this._executionOptions, ...executionOpts };
+      debug('program', 'Build: Calling generate with variables: %o, finalOptions: %o', variables, finalOptions);
+      await this.generate(variables, finalOptions);
+
       if (this.persistId && this.needsSave) {
+        debug('program', 'Build: Attempting to save program after generation: %s', this.persistId);
         try {
           await this.save(this.persistId);
-        } catch (e) {
+        } catch (e: any) {
+          debug('program', 'Build: Save failed for %s: %s', this.persistId, e.message);
           // needsSave remains true if save fails
         }
       }
+      if (!this.generatedCode) {
+        debug('program', 'Error: Generation completed but this.generatedCode is still null.');
+        throw new Error("Code generation failed to produce code.");
+      }
       return createFunctionProxy(this.generatedCode!);
+    }
+    
+    // If not needsToGenerate and this.generatedCode exists (e.g. from a previous .generate() call without build, or loaded then build called again without force)
+    if (!this.generatedCode) {
+        // This case should ideally not be reached if logic is correct, but as a safeguard:
+        debug('program', 'Error: build determined no generation needed, but no generated code exists. Regenerating.');
+        const finalOptions = { ...this._executionOptions, ...executionOpts };
+        await this.generate(variables, finalOptions);
+        if (!this.generatedCode) {
+            debug('program', 'Error: Safeguard generation failed to produce code.');
+            throw new Error("Code generation failed to produce code.");
+        }
     }
     return createFunctionProxy(this.generatedCode!);
   }

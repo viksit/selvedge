@@ -42,7 +42,7 @@ async function main() {
     .returns<{ [word: string]: number }>()
     .using("gpt4")
     .options({ forceRegenerate: true })
-    .persist("word-counter-3");
+    .persist("word-counter-2099");
 
   // Call it directly as a function
   const frequency = await wordCounter("This is a test. This is only a test.");
