@@ -188,7 +188,13 @@ class ProgramBuilderImpl<T> extends BuilderBase<ProgramExecutionOptions> {
 
   async save(name: string): Promise<string> {
     debug('persistence', `Saving program: ${name}`);
-    if (!this.generatedCode) await this.generate();
+    debug('persistence', `Store base path: ${store.getBasePath()}`);
+    debug('persistence', `PersistId: ${this.persistId}`);
+    debug('persistence', `NeedsSave: ${this.needsSave}`);
+    if (!this.generatedCode) {
+      debug('persistence', `No generated code found, generating before save...`);
+      await this.generate();
+    }
     if (!this.persistId) this.persistId = name;
     const data = {
       template: {
@@ -202,6 +208,25 @@ class ProgramBuilderImpl<T> extends BuilderBase<ProgramExecutionOptions> {
     try {
       const versionId = await store.save('program', name, data);
       this.needsSave = false;
+
+      // --- Post-save verification and debug ---
+      const programDir = require('path').join(store.getBasePath(), 'programs', name);
+      const fs = require('fs/promises');
+      let dirExists = false;
+      let files: string[] = [];
+      try {
+        await fs.access(programDir);
+        dirExists = true;
+        files = await fs.readdir(programDir);
+      } catch (e) {
+        dirExists = false;
+      }
+      debug('persistence', `Program directory after save: ${programDir}`);
+      debug('persistence', `Directory exists: ${dirExists}`);
+      debug('persistence', `Files in program directory: ${files}`);
+      if (!dirExists) {
+        debug('persistence', `WARNING: Program directory does not exist after save!`);
+      }
       return versionId;
     } catch (error: any) {
       debug('persistence', `Error saving program: %s`, error.message);
