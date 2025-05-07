@@ -5,6 +5,7 @@
  */
 import { store } from '../storage';
 import { FlowPipeline, FlowStep, FlowContext, FlowContextStep, FlowContextPipeline, FlowStepTypes } from './types';
+import { debug } from '../utils/debug';
 
 /**
  * Create a flow pipeline from a series of steps
@@ -17,10 +18,15 @@ export function flow<TInput, TOutput>(
   // Create the execution function
   const execute = async (input: TInput): Promise<TOutput> => {
     let current: any = input;
+    debug('selvedge:flow:step', 'Flow starting with input: %o', current);
 
-    for (const step of steps) {
+    for (let i = 0; i < steps.length; i++) {
+      const step = steps[i];
+      const stepName = step.name || `step-${i + 1}`;
+      debug('selvedge:flow:step', `Executing ${stepName} with input: %o`, current);
       try {
         current = await step(current);
+        debug('selvedge:flow:step', `Finished ${stepName}, output: %o`, current);
       } catch (error) {
         // // Enhance error with step information and input context
         // const enhancedError = error as Error;

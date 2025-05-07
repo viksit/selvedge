@@ -353,19 +353,35 @@ class PromptTemplateImpl<T> extends BuilderBase<T> implements TemplateObject<T> 
       if (extractedJson) {
         try {
           // Validate the extracted JSON against the schema
-          // Use silent option to avoid showing validation errors in the console
           const validated = validateWithSchema(zodSchema, extractedJson, { silent: true });
           if (validated) {
+            // Ensure a plain JavaScript object is returned if it was an object
+            if (typeof validated === 'object' && validated !== null) {
+              try {
+                return JSON.parse(JSON.stringify(validated)) as unknown as R;
+              } catch (e) {
+                debug('template', 'Failed to re-parse validated object, returning as is:', e);
+                return validated as unknown as R; // Fallback if re-parsing fails (should be rare)
+              }
+            }
             return validated as unknown as R;
           }
         } catch (e) {
-          // This catch block is less likely to be reached now with the silent option
           console.warn('Response validation failed:', e);
         }
-        // If validation fails, return as-is
+        // If validation fails, but JSON was extracted, return the raw extracted JSON
+        // (which might be an object or an array if parsing was successful)
+        if (typeof extractedJson === 'object' && extractedJson !== null) {
+            try {
+                return JSON.parse(JSON.stringify(extractedJson)); // Sanitize this too
+            } catch (e) {
+                debug('template', 'Failed to re-parse extractedJson object, returning as is:', e);
+                return extractedJson;
+            }
+        }
         return extractedJson;
       }
-      return response as unknown as any;
+      return response as unknown as any; // Return original string if no JSON was extracted
     };
 
     // Return this instance with the updated methods
@@ -489,10 +505,24 @@ function makeTemplateCallable<T>(template: TemplateObject<T>): PromptTemplate<T>
   }
 
   // Create a base function that will be our callable template
-  const baseFunction = function (...args: any[]) {
+  const baseFunction = async function (...args: any[]) {
     const [variables = {}, options = {}] = args;
     const mergedOptions = { ...(template._executionOptions || {}), ...options };
-    return template.execute(variables, mergedOptions);
+    let result = await template.execute(variables, mergedOptions);
+
+    // If the result is a JSON-looking string, attempt to parse it so flows receive objects
+    if (typeof result === 'string') {
+      const maybeObj = extractJsonFromString(result);
+      if (maybeObj && typeof maybeObj === 'object') {
+        result = maybeObj;
+      }
+    }
+
+    // Ensure plain object shell like programs do
+    if (result && typeof result === 'object' && !Array.isArray(result) && typeof result !== 'function') {
+      return Object.assign(Object.create(null), result);
+    }
+    return result;
   };
 
   // Pre-wrap all methods that return templates
@@ -611,40 +641,63 @@ export function createTemplate<T = any>(
  */
 function extractJsonFromString(text: string): any | null {
   // Clean the input text
-  const cleanedText = text.trim();
+  let cleanedText = text.trim();
 
-  // First, try direct parsing if it looks like JSON
+  // 1) Strip Markdown code-block fences if present
+  const codeBlockMatch = cleanedText.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (codeBlockMatch) {
+    cleanedText = codeBlockMatch[1].trim();
+  }
+
+  // 2) If the entire thing is quoted ("{ ... }"), un-quote it first
+  if (
+    (cleanedText.startsWith('"') && cleanedText.endsWith('"')) ||
+    (cleanedText.startsWith("'") && cleanedText.endsWith("'"))
+  ) {
+    cleanedText = cleanedText.slice(1, -1);
+
+    // Try to parse immediately (may still contain escaped quotes)
+    try {
+      return JSON.parse(cleanedText);
+    } catch {
+      // If it failed, try removing escape characters and parse again
+      try {
+        return JSON.parse(cleanedText.replace(/\\"/g, '"'));
+      } catch {
+        // continue to other fallbacks
+      }
+    }
+  }
+
+  // Existing direct-parse attempt
   if (
     (cleanedText.startsWith('{') && cleanedText.endsWith('}')) ||
     (cleanedText.startsWith('[') && cleanedText.endsWith(']'))
   ) {
     try {
       return JSON.parse(cleanedText);
-    } catch (e) {
-      // If direct parsing fails, we'll try more sophisticated extraction
+    } catch {
+      // continue to fallback logic
     }
   }
 
-  // Look for JSON-like structures in the text
+  // Existing brace/array regex extraction (kept as-is)
   const jsonMatch = cleanedText.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
   if (jsonMatch) {
     try {
       return JSON.parse(jsonMatch[0]);
-    } catch (e) {
-      // If parsing fails, try to clean up the JSON
+    } catch {
+      // attempt to recover common issues: unquoted keys, single quotes
       try {
-        // Replace common issues like unquoted keys
-        const fixedJson = jsonMatch[0]
-          .replace(/(['"])?([a-zA-Z0-9_]+)(['"])?:/g, '"$2":') // Fix unquoted keys
-          .replace(/'/g, '"'); // Replace single quotes with double quotes
-        return JSON.parse(fixedJson);
-      } catch (e) {
-        // If all parsing attempts fail, return null
+        const fixed = jsonMatch[0]
+          .replace(/(['"])?([a-zA-Z0-9_]+)(['"])?:/g, '"$2":')
+          .replace(/'/g, '"');
+        return JSON.parse(fixed);
+      } catch {
         return null;
       }
     }
   }
 
-  // If no JSON-like structure is found, return null
-  return null;
+  return null; // give up – caller will treat as plain string
 }

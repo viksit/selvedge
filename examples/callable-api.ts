@@ -1,7 +1,7 @@
 import { selvedge } from '../src';
 import { inspect } from 'util';
 // Enable specific debug namespaces to see persistence-related logs
-// selvedge.debug("*");
+selvedge.debug("*");
 
 selvedge.models({
   claude: selvedge.anthropic('claude-3-5-haiku-20241022'),
@@ -13,7 +13,7 @@ async function main() {
   console.log('Example 1: Sentiment Analysis');
   const sentimentAnalyzer = selvedge.prompt`
     Analyze the sentiment in this text: ${text => text}
-    Respond with a JSON object containing score (-1.0 to 1.0), label, and confidence.
+    Respond with a JSON object containing score (-1.0 to 1.0), label, and rationale, and confidence.
     Include detailed rationale for the score.
   `
     .returns<{ score: number; label: string; confidence: number; rationale: string }>()
@@ -55,7 +55,15 @@ async function main() {
     () => ({ text: "I absolutely love this product!" }),
     sentimentAnalyzer,
     // transform for wordcounter
-    (result) => (result.rationale),
+    (result) => {
+      console.log('[DEBUG callable-api.ts] Input to Step 3 - typeof result:', typeof result);
+      console.log('[DEBUG callable-api.ts] Input to Step 3 - result (stringified):', JSON.stringify(result, null, 2));
+      if (typeof result === 'object' && result !== null) {
+        console.log('[DEBUG callable-api.ts] Input to Step 3 - result.keys:', Object.keys(result));
+        console.log('[DEBUG callable-api.ts] Input to Step 3 - result.rationale directly:', result.rationale);
+      }
+      return result.rationale;
+    },
     wordCounter
   ]);
 
