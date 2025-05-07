@@ -9,18 +9,20 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
-      - name: Install Bun
-        uses: oven-sh/setup-bun@v1
+      - uses: oven-sh/setup-bun@v1
         with:
           bun-version: latest
 
       - name: Install dependencies
         run: bun install
 
-      - name: Run tests
+      - name: Run tests (serial, isolated store)
+        env:
+          # each job gets its own temp selvedge dir
+          SELVEDGE_BASE_PATH: ${{ runner.temp }}/selvedge
+          # force one worker
+          BUN_TEST_WORKERS: 1
         run: bun test
