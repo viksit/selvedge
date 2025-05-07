@@ -18,15 +18,15 @@ export function flow<TInput, TOutput>(
   // Create the execution function
   const execute = async (input: TInput): Promise<TOutput> => {
     let current: any = input;
-    debug('selvedge:flow:step', 'Flow starting with input: %o', current);
+    debug('flow', 'Flow starting with input: %o', current);
 
     for (let i = 0; i < steps.length; i++) {
       const step = steps[i];
       const stepName = step.name || `step-${i + 1}`;
-      debug('selvedge:flow:step', `Executing ${stepName} with input: %o`, current);
+      debug('flow', `Executing ${stepName} with input: %o`, current);
       try {
         current = await step(current);
-        debug('selvedge:flow:step', `Finished ${stepName}, output: %o`, current);
+        debug('flow', `Finished ${stepName}, output: %o`, current);
       } catch (error) {
         // // Enhance error with step information and input context
         // const enhancedError = error as Error;
