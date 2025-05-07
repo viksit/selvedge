@@ -49,10 +49,10 @@ function evaluateTypeScript(code: string): any {
 function createFunctionProxy(code: string): any {
   // Clean up code from possible JSON escapes
   const cleanCode = typeof code === 'string'
-    ? code.replace(/\\n/g, '\n')
-      .replace(/\"/g, '"')
-      .replace(/\\t/g, '\t')
-      .replace(/\\\\/g, '\\')
+    ? code.replace(/\\n/g, '\\n')
+      .replace(/\\"/g, '"')
+      .replace(/\\t/g, '\\t')
+      .replace(/\\\\/g, '\\\\')
     : code;
 
   // Try to extract function name (function, const, class)
@@ -361,19 +361,20 @@ class ProgramBuilderImpl<T> extends BuilderBase<ProgramExecutionOptions> {
 
 // --- Proxy shell to make builder callable ---
 function makeProgramCallable<T>(builder: ProgramBuilderImpl<T>): ProgramBuilder<T> {
-  let compiledFn: any | null = null;
-  let compiling: Promise<void> | null = null;
+  let finalExecutableFn: any | null = null;
+  let buildPromise: Promise<any> | null = null;
+
   const callable = async (...args: any[]) => {
-    if (!compiledFn) {
-      if (!compiling) {
-        compiling = builder.build().then(code => {
-          compiledFn = evaluateTypeScript(code);
-          compiling = null;
-        });
+    if (!finalExecutableFn) {
+      if (!buildPromise) {
+        // Call builder.build() which returns the fully processed, callable function proxy
+        buildPromise = builder.build();
       }
-      await compiling;
+      // The result of builder.build() is the function proxy itself
+      finalExecutableFn = await buildPromise;
+      buildPromise = null; // Reset for potential future re-builds if builder state changes
     }
-    return await compiledFn(...args);
+    return await finalExecutableFn(...args);
   };
   // Attach all builder methods/properties
   Object.getOwnPropertyNames(ProgramBuilderImpl.prototype).forEach(k => {
