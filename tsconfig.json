@@ -4,7 +4,6 @@
     "types": [
       "node",
       "commander",
-      "bun-types"
     ],
     "module": "ESNext",
     "moduleResolution": "node",

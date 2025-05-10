@@ -124,6 +124,23 @@ export interface SelvedgeInstance {
    * @returns Array of version IDs
    */
   listPromptVersions(name: string): Promise<string[]>;
+
+  /**
+   * Access to schema helper functions (string, number, array, etc.)
+   */
+  schema: SelvedgeSchemaHelpers;
+}
+
+/**
+ * Type for the schema helper functions provided by Selvedge.
+ */
+export interface SelvedgeSchemaHelpers {
+  string: (desc?: string) => import('zod').ZodString;
+  number: (desc?: string) => import('zod').ZodNumber;
+  boolean: (desc?: string) => import('zod').ZodBoolean;
+  array: <T>(item: import('zod').ZodType<T>, desc?: string) => import('zod').ZodArray<import('zod').ZodType<T>>;
+  shape: <T extends import('zod').ZodRawShape>(obj: T) => import('zod').ZodObject<T>;
+  z: typeof import('./schema').z; // Refer to the z exported by schema.ts
 }
 
 /**

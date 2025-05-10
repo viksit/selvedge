@@ -36,8 +36,8 @@ export interface PromptTemplate<TOutput = any, TInput = PromptVariables> {
   needsSave?: boolean;
   render: (v: PromptVariables) => string;
   execute: <R = TOutput>(v: TInput, o?: PromptExecutionOptions) => Promise<R>;
-  inputs: <I>(schema: z.ZodType<I>) => PromptTemplate<TOutput, I>;
-  outputs: <O>(schema: z.ZodType<O>) => PromptTemplate<O, TInput>;
+  inputs<S extends z.ZodRawShape>(shape: S): PromptTemplate<TOutput, z.infer<z.ZodObject<S>>>;
+  outputs<S extends z.ZodRawShape>(shape: S): PromptTemplate<z.infer<z.ZodObject<S>>, TInput>;
   formatResponse: (r: string) => TOutput;
   prefix: (t: string) => PromptTemplate<TOutput>;
   suffix: (t: string) => PromptTemplate<TOutput>;

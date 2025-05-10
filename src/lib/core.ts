@@ -8,6 +8,7 @@ import { createProgram, ProgramBuilder } from './programs';
 import { store } from './storage';
 import { flow as createFlow } from './flow';
 import { enableDebug, enableNamespace, parseDebugString, debug } from './utils/debug';
+import schemaHelpers from './schema'; // Import the schema helpers
 
 /**
  * The main Selvedge instance that provides access to all library functionality
@@ -447,6 +448,11 @@ export const selvedge: SelvedgeInstance = {
       }
     }
   },
+
+  /**
+   * Access to schema helper functions (string, number, array, etc.)
+   */
+  schema: schemaHelpers,
 };
 
 /**
