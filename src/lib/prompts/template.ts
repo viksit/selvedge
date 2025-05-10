@@ -12,7 +12,7 @@ import { ModelRegistry } from '../models';
 import { ModelDefinition, ModelProvider } from '../types';
 import { store } from '../storage';
 import * as z from 'zod';
-import { generateJsonExampleFromSchema } from '../schema';
+
 import { formatForPrompt } from '../utils/formatter';
 import { debug } from '../utils/debug';
 import { BuilderBase } from '../shared/builder-base';
@@ -236,10 +236,6 @@ class PromptTemplateImpl<TOut, TIn = PromptVariables>
 
   outputs<O>(schema: z.ZodType<O>): PromptTemplate<O, TIn> {
     this._outputSchema = schema;
-    const example = generateJsonExampleFromSchema(schema);
-    if (example && example !== '{}' && example !== '[]') {
-      this.segments.push(`\n\nYour response must be in this JSON format:\n${example}`);
-    }
     return this as unknown as PromptTemplate<O, TIn>;
   }
 
