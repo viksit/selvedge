@@ -398,11 +398,13 @@ function makeCallable<TOut, TIn>(
   //    This ensures they are read from the underlying 'tmpl' instance.
   Object.defineProperty(fnCallable, 'segments', {
     get: () => tmpl.segments,
+    set: (v) => { (tmpl as any).segments = v; },
     enumerable: true,
-    configurable: false, // typically false for interface properties
+    configurable: false,
   });
   Object.defineProperty(fnCallable, 'variables', {
     get: () => tmpl.variables,
+    set: (v) => { (tmpl as any).variables = v; },
     enumerable: true,
     configurable: false,
   });
