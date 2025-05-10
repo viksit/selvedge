@@ -133,14 +133,10 @@ function extractCodeFromResponse(response: string): string {
 }
 
 // --- Main ProgramBuilder Implementation ---
-class ProgramBuilderImpl<TOut = any, TIn = ProgramVariables> extends BuilderBase<ProgramExecutionOptions> {
-  template: PromptTemplate<TOut>;
+class ProgramBuilderImpl<T> extends BuilderBase<ProgramExecutionOptions> {
+  template: PromptTemplate<T>;
   exampleList: ProgramExample[];
   generatedCode: string | null;
-
-  // Added schemas for runtime validation
-  _inputSchema?: import('zod').ZodTypeAny;
-  _outputSchema?: import('zod').ZodTypeAny;
 
   constructor(strings: TemplateStringsArray, values: any[]) {
     super();
@@ -150,32 +146,20 @@ class ProgramBuilderImpl<TOut = any, TIn = ProgramVariables> extends BuilderBase
     this._executionOptions.model = { provider: ModelProvider.OPENAI, model: 'gpt-4' };
   }
 
-  /* ----------------------- schema helpers ---------------------- */
-
-  inputs<I extends import('zod').ZodTypeAny>(schema: I): ProgramBuilder<I extends any ? TOut : never, import('zod').infer<I>> {
-    this._inputSchema = schema;
-    return makeProgramCallable(this as unknown as ProgramBuilderImpl<TOut, import('zod').infer<I>>);
-  }
-
-  outputs<O extends import('zod').ZodTypeAny>(schema: O): ProgramBuilder<import('zod').infer<O>, TIn> {
-    this._outputSchema = schema;
-    return makeProgramCallable(this as unknown as ProgramBuilderImpl<import('zod').infer<O>, TIn>);
-  }
-
   // Fluent API: options
-  options(opts: ProgramExecutionOptions): ProgramBuilder<TOut, TIn> {
+  options(opts: ProgramExecutionOptions): ProgramBuilder<T> {
     const copy = this._clone();
     copy._executionOptions = { ...this._executionOptions, ...opts };
     return makeProgramCallable(copy);
   }
 
   // Fluent API: examples
-  withExamples(newExamples: ProgramExample[]): ProgramBuilder<TOut, TIn> {
+  withExamples(newExamples: ProgramExample[]): ProgramBuilder<T> {
     const copy = this._clone();
     copy.exampleList = [...this.exampleList, ...newExamples];
     return makeProgramCallable(copy);
   }
-  examples(inputOutputMap: Record<string, any>): ProgramBuilder<TOut, TIn> {
+  examples(inputOutputMap: Record<string, any>): ProgramBuilder<T> {
     const newExamples: ProgramExample[] = Object.entries(inputOutputMap).map(([input, output]) => ({
       input: { input },
       output: typeof output === 'string' ? output : JSON.stringify(output, null, 2)
@@ -183,15 +167,20 @@ class ProgramBuilderImpl<TOut = any, TIn = ProgramVariables> extends BuilderBase
     return this.withExamples(newExamples);
   }
 
+  // Fluent API: returns
+  returns<U>(): ProgramBuilder<U> {
+    return makeProgramCallable(this as unknown as ProgramBuilderImpl<U>);
+  }
+
   // Fluent API: using
-  using(model: string | ModelDefinition): ProgramBuilder<TOut, TIn> {
+  using(model: string | ModelDefinition): ProgramBuilder<T> {
     const copy = this._clone();
     copy._executionOptions = { ...this._executionOptions, model };
     return makeProgramCallable(copy);
   }
 
   // Persistence
-  persist(id: string): ProgramBuilder<TOut, TIn> {
+  persist(id: string): ProgramBuilder<T> {
     this.persistId = id;
     this.needsSave = true;
     return makeProgramCallable(this);
@@ -358,28 +347,20 @@ class ProgramBuilderImpl<TOut = any, TIn = ProgramVariables> extends BuilderBase
   }
 
   // --- Private: clone for immutability ---
-  private _clone(): ProgramBuilderImpl<TOut, TIn> {
-    const copy = new ProgramBuilderImpl<TOut, TIn>([] as any, []);
+  private _clone(): ProgramBuilderImpl<T> {
+    const copy = new ProgramBuilderImpl<T>([] as any, []);
     copy.template = this.template;
     copy.exampleList = [...this.exampleList];
     copy.generatedCode = this.generatedCode;
     copy._executionOptions = { ...this._executionOptions };
-    copy._inputSchema = this._inputSchema;
-    copy._outputSchema = this._outputSchema;
     copy.persistId = this.persistId;
     copy.needsSave = this.needsSave;
     return copy;
   }
-
-  // DEPRECATED: returns for backward compatibility
-  /** @deprecated Use .outputs() instead */
-  returns<U>(): ProgramBuilder<U, TIn> {
-    return makeProgramCallable(this as unknown as ProgramBuilderImpl<U, TIn>);
-  }
 }
 
 // --- Proxy shell to make builder callable ---
-function makeProgramCallable<TOut = any, TIn = ProgramVariables>(builder: ProgramBuilderImpl<TOut, TIn>): ProgramBuilder<TOut, TIn> {
+function makeProgramCallable<T>(builder: ProgramBuilderImpl<T>): ProgramBuilder<T> {
   let finalExecutableFn: any | null = null;
   let buildPromise: Promise<any> | null = null;
 
@@ -393,31 +374,7 @@ function makeProgramCallable<TOut = any, TIn = ProgramVariables>(builder: Progra
       finalExecutableFn = await buildPromise;
       buildPromise = null; // Reset for potential future re-builds if builder state changes
     }
-
-    // ------------------ runtime input validation ------------------
-    if (builder._inputSchema) {
-      try {
-        // If there's exactly one argument, validate that arg; otherwise validate the args tuple
-        const toValidate = args.length === 1 ? args[0] : args;
-        builder._inputSchema.parse(toValidate);
-      } catch (e) {
-        // Surface the ZodError directly
-        throw e;
-      }
-    }
-
-    let result = await finalExecutableFn(...args);
-
-    // ------------------ runtime output validation -----------------
-    if (builder._outputSchema) {
-      try {
-        result = builder._outputSchema.parse(result);
-      } catch (e) {
-        throw e;
-      }
-    }
-
-    return result;
+    return await finalExecutableFn(...args);
   };
   // Attach all builder methods/properties
   Object.getOwnPropertyNames(ProgramBuilderImpl.prototype).forEach(k => {
@@ -432,15 +389,15 @@ function makeProgramCallable<TOut = any, TIn = ProgramVariables>(builder: Progra
       set: v => { (builder as any)[p] = v; }
     });
   });
-  return callable as ProgramBuilder<TOut, TIn>;
+  return callable as ProgramBuilder<T>;
 }
 
 // --- Exported API ---
-export function createProgram<TOut = any, TIn = ProgramVariables>(
+export function createProgram<T = string>(
   strings: TemplateStringsArray,
   values: any[]
-): ProgramBuilder<TOut, TIn> {
+): ProgramBuilder<T> {
   debug('program', 'createProgram called');
-  const builder = new ProgramBuilderImpl<TOut, TIn>(strings, values);
+  const builder = new ProgramBuilderImpl<T>(strings, values);
   return makeProgramCallable(builder);
 }

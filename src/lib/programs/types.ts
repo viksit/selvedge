@@ -49,9 +49,9 @@ export interface ProgramExample {
 /**
  * A program builder for constructing code generation programs
  */
-export interface ProgramBuilder<TOut = any, TIn = ProgramVariables> {
+export interface ProgramBuilder<T = string> {
   /** Call signature - makes the program directly callable */
-  (...args: any[]): Promise<TOut>;
+  (...args: any[]): Promise<T>;
 
   /** The underlying prompt template */
   template: PromptTemplate;
@@ -72,39 +72,36 @@ export interface ProgramBuilder<TOut = any, TIn = ProgramVariables> {
   needsSave?: boolean;
 
   /** Add examples to the program builder */
-  withExamples(examples: ProgramExample[]): ProgramBuilder<TOut, TIn>;
+  withExamples(examples: ProgramExample[]): ProgramBuilder<T>;
 
   /** Add examples using a simpler input-output format */
-  examples(inputOutputMap: Record<string, any>): ProgramBuilder<TOut, TIn>;
+  examples(inputOutputMap: Record<string, any>): ProgramBuilder<T>;
 
   /** Specify the model to use for generation */
-  using(model: ModelDefinition | string): ProgramBuilder<TOut, TIn>;
+  using(model: ModelDefinition | string): ProgramBuilder<T>;
 
   /** Generate code with the given variables */
-  generate(variables: ProgramVariables, options?: ProgramExecutionOptions): Promise<TOut>;
+  generate(variables: ProgramVariables, options?: ProgramExecutionOptions): Promise<T>;
 
-  /** Build and get executable function */
+  /** 
+   * Execute the generated function with the given variables
+   * Returns a proxy that allows direct function calls
+   */
   build(variables?: ProgramVariables, options?: ProgramExecutionOptions): Promise<any>;
 
-  /** Attach a Zod schema to validate program inputs */
-  inputs<I extends import('zod').ZodTypeAny>(schema: I): ProgramBuilder<TOut, import('zod').infer<I>>;
-
-  /** Attach a Zod schema to validate program outputs */
-  outputs<O extends import('zod').ZodTypeAny>(schema: O): ProgramBuilder<import('zod').infer<O>, TIn>;
+  /** Specify the return type of the program */
+  returns<R>(): ProgramBuilder<R>;
 
   /** Set execution options for this program */
-  options(opts: ProgramExecutionOptions): ProgramBuilder<TOut, TIn>;
+  options(opts: ProgramExecutionOptions): ProgramBuilder<T>;
 
   /** Save this program for later use */
-  persist(id: string): ProgramBuilder<TOut, TIn>;
+  persist(id: string): ProgramBuilder<T>;
 
   /** 
    * Save this program with versioning
    * @param name Name to save the program under
    * @returns The program builder for chaining
    */
-  save(name: string): Promise<ProgramBuilder<TOut, TIn>>;
-
-  /** DEPRECATED: use .outputs() instead */
-  returns<R>(): ProgramBuilder<R, TIn>;
+  save(name: string): Promise<ProgramBuilder<T>>;
 }
