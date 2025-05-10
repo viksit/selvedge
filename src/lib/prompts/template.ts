@@ -6,7 +6,7 @@ import { ModelRegistry } from '../models';
 import { ModelDefinition, ModelProvider } from '../types';
 import { store } from '../storage';
 import * as z from 'zod';
-import { inferSchema, generateJsonExampleFromSchema, validateWithSchema } from '../schema';
+import { generateJsonExampleFromSchema, validateWithSchema } from '../schema';
 import { formatForPrompt } from '../utils/formatter';
 import { debug } from '../utils/debug';
 import { BuilderBase } from '../shared/builder-base';
@@ -336,7 +336,7 @@ class PromptTemplateImpl<T> extends BuilderBase<T> implements TemplateObject<T> 
 
   returns<R>(schema?: z.ZodType<R>): PromptTemplate<R> {
     // If no schema is provided, try to infer one from the type parameter
-    const zodSchema = schema || inferSchema<R>();
+    const zodSchema = schema || z.any();
 
     // Generate an example from the schema
     const example = generateJsonExampleFromSchema(zodSchema);
