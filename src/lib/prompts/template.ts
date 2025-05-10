@@ -117,30 +117,6 @@ class PromptTemplateImpl<TOut, TIn = PromptVariables>
 
   /* ----------------------- rendering ---------------------------- */
 
-  // render(vars: TIn = {} as any): string {
-  //   if (vars !== null && typeof vars !== 'object') {
-  //     throw new Error(
-  //       `Invalid input: expected an object, received ${typeof vars}.` +
-  //         ` If you pass a raw string in a flow, wrap it: { text: "..." }.`,
-  //     );
-  //   }
-
-  //   return this.segments
-  //     .map(seg => {
-  //       if (typeof seg === 'string') return seg;
-  //       /* variable segment */
-  //       const val = (vars as any)[seg.name];
-  //       try {
-  //         return defaultRenderer(
-  //           isSimpleAccessor(seg.renderer) ? seg.renderer(val) : seg.renderer(vars),
-  //         );
-  //       } catch (e) {
-  //         console.error(`Error rendering variable ${seg.name}:`, e);
-  //         return defaultRenderer(val);
-  //       }
-  //     })
-  //     .join('');
-  // }
 
   render(vars: TIn = {} as any): string {
     if (vars !== null && typeof vars !== 'object') {
