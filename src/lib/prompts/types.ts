@@ -1,6 +1,6 @@
 // prompts/types.ts
 import { ModelDefinition } from '../types';
-
+import * as z from 'zod';
 export interface PromptExecutionOptions {
   model?: ModelDefinition | string;
   temperature?: number;
@@ -28,24 +28,25 @@ export interface PromptVariable {
 
 export type PromptSegment = string | PromptVariable;
 
-export interface PromptTemplate<T = any> {
-  (v?: PromptVariables, o?: PromptExecutionOptions): Promise<T>;
+export interface PromptTemplate<TOutput = any, TInput = PromptVariables> {
+  (v?: TInput, o?: PromptExecutionOptions): Promise<TOutput>;
   segments: PromptSegment[];
   variables: PromptVariable[];
   persistId?: string;
   needsSave?: boolean;
   render: (v: PromptVariables) => string;
-  execute: <R = T>(v: PromptVariables, o?: PromptExecutionOptions) => Promise<R>;
-  returns: <R = T>() => PromptTemplate<R>;
-  formatResponse: (r: string) => T;
-  prefix: (t: string) => PromptTemplate<T>;
-  suffix: (t: string) => PromptTemplate<T>;
-  clone: () => PromptTemplate<T>;
-  train: (e: { text: any; output: T }[]) => PromptTemplate<T>;
-  using: (m: string | ModelDefinition) => PromptTemplate<T>;
-  options: (o: PromptExecutionOptions) => PromptTemplate<T>;
-  persist: (id: string) => PromptTemplate<T>;
-  save: (n: string) => Promise<PromptTemplate<T>>;
+  execute: <R = TOutput>(v: TInput, o?: PromptExecutionOptions) => Promise<R>;
+  inputs: <I>(schema: z.ZodType<I>) => PromptTemplate<TOutput, I>;
+  outputs: <O>(schema: z.ZodType<O>) => PromptTemplate<O, TInput>;
+  formatResponse: (r: string) => TOutput;
+  prefix: (t: string) => PromptTemplate<TOutput>;
+  suffix: (t: string) => PromptTemplate<TOutput>;
+  clone: () => PromptTemplate<TOutput>;
+  train: (e: { text: any; output: TOutput }[]) => PromptTemplate<TOutput>;
+  using: (m: string | ModelDefinition) => PromptTemplate<TOutput>;
+  options: (o: PromptExecutionOptions) => PromptTemplate<TOutput>;
+  persist: (id: string) => PromptTemplate<TOutput>;
+  save: (n: string) => Promise<PromptTemplate<TOutput>>;
 }
 
 export interface PromptTemplateFactory {
