@@ -95,8 +95,17 @@ interface TemplateObject<TOut, TIn = PromptVariables> extends BuilderBase<TOut> 
   [CALLABLE]?: true;
   render(vars: TIn): string;
   execute<R = TOut>(vars: TIn, opts?: PromptExecutionOptions): Promise<R>;
-  inputs<InputSchema extends z.ZodObject<any, any, any>>(schema: InputSchema): PromptTemplate<TOut, z.infer<InputSchema>>; 
-  outputs<OutputSchema extends z.ZodObject<any, any, any>>(schema: OutputSchema): PromptTemplate<z.infer<OutputSchema>, TIn>; 
+  
+  // Modified to accept either ZodRawShape or ZodObject
+  inputs<S extends z.ZodRawShape | z.ZodObject<any, any, any>>(
+    schemaOrShape: S
+  ): PromptTemplate<TOut, z.infer<S extends z.ZodRawShape ? z.ZodObject<S> : S>>;
+
+  // Modified to accept either ZodRawShape or ZodObject
+  outputs<S extends z.ZodRawShape | z.ZodObject<any, any, any>>(
+    schemaOrShape: S
+  ): PromptTemplate<z.infer<S extends z.ZodRawShape ? z.ZodObject<S> : S>, TIn>;
+  
   prefix(txt: string): PromptTemplate<TOut, TIn>;
   suffix(txt: string): PromptTemplate<TOut, TIn>;
   clone(): PromptTemplate<TOut, TIn>;
@@ -256,32 +265,50 @@ class PromptTemplateImpl<TOut, TIn = PromptVariables>
 
   /* ----------------------- schema builders ---------------------- */
 
-  inputs<InputSchema extends z.ZodObject<any, any, any>>(
-    schema: InputSchema
-  ): PromptTemplate<TOut, z.infer<InputSchema>> {
-    
-    debug('prompt', 'Setting input schema with shape: %o', Object.keys(schema.shape));
-    this._inputSchema = schema;    
-    return this as unknown as PromptTemplate<TOut, z.infer<InputSchema>>; // <-- MODIFIED return type cast
+  inputs<S extends z.ZodRawShape | z.ZodObject<any, any, any>>(
+    schemaOrShape: S
+  ): PromptTemplate<TOut, z.infer<S extends z.ZodRawShape ? z.ZodObject<S> : S>> {
+    if (schemaOrShape instanceof z.ZodObject) {
+      // It's already a ZodObject, use it directly
+      debug('prompt', 'Setting input schema with provided ZodObject. Shape: %o', Object.keys(schemaOrShape.shape));
+      this._inputSchema = schemaOrShape;
+    } else {
+      // It's a ZodRawShape, wrap it with z.object()
+      debug('prompt', 'Setting input schema with raw shape: %o', Object.keys(schemaOrShape));
+      this._inputSchema = z.object(schemaOrShape as z.ZodRawShape); // Cast needed due to union
+    }
+    return this as unknown as PromptTemplate<TOut, z.infer<S extends z.ZodRawShape ? z.ZodObject<S> : S>>;
   }
 
-  outputs<OutputSchema extends z.ZodObject<any, any, any>>(
-    schema: OutputSchema
-  ): PromptTemplate<z.infer<OutputSchema>, TIn> {
-  
-    // Change: Log the shape from the schema and assign schema directly
-    debug('prompt', 'Setting output schema with shape: %o', Object.keys(schema.shape)); // <-- MODIFIED logging
-    this._outputSchema = schema;
+  outputs<S extends z.ZodRawShape | z.ZodObject<any, any, any>>(
+    schemaOrShape: S
+  ): PromptTemplate<z.infer<S extends z.ZodRawShape ? z.ZodObject<S> : S>, TIn> {
+    let finalSchema: z.ZodObject<any, any, any>;
+    let rawShapeForHint: z.ZodRawShape;
+
+    if (schemaOrShape instanceof z.ZodObject) {
+      // It's already a ZodObject
+      debug('prompt', 'Setting output schema with provided ZodObject. Shape: %o', Object.keys(schemaOrShape.shape));
+      finalSchema = schemaOrShape;
+      rawShapeForHint = schemaOrShape.shape; // Get the raw shape for appendSchemaTypeHints
+    } else {
+      // It's a ZodRawShape
+      debug('prompt', 'Setting output schema with raw shape: %o', Object.keys(schemaOrShape));
+      finalSchema = z.object(schemaOrShape as z.ZodRawShape); // Cast needed
+      rawShapeForHint = schemaOrShape as z.ZodRawShape; // Use the raw shape directly for hints
+    }
+    
+    this._outputSchema = finalSchema;
     
     // Generate a simple example of the expected JSON structure
-    const example = appendSchemaTypeHints(schema.shape);
+    const example = appendSchemaTypeHints(rawShapeForHint);
     debug('prompt', 'Generated schema example for LLM: %s', example);
     
     // Add instructions to the prompt for the LLM to return JSON
     this.segments.push(`\n\nIMPORTANT: You must respond with a valid JSON object that matches this structure:\n${example}\n`);
     debug('prompt', 'Added JSON format instructions to prompt');
     
-    return this as unknown as PromptTemplate<z.infer<OutputSchema>, TIn>; // <-- MODIFIED return type cast
+    return this as unknown as PromptTemplate<z.infer<S extends z.ZodRawShape ? z.ZodObject<S> : S>, TIn>;
   }
   /* ----------------------- convenience builders ----------------- */
 
