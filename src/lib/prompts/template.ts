@@ -99,8 +99,8 @@ interface TemplateObject<TOut, TIn = PromptVariables> extends BuilderBase<TOut> 
   prefix(txt: string): PromptTemplate<TOut, TIn>;
   suffix(txt: string): PromptTemplate<TOut, TIn>;
   clone(): PromptTemplate<TOut, TIn>;
-  train(examples: Array<{ text: any; output: TOut }>): PromptTemplate<TOut, TIn>;
   using(model: string | ModelDefinition): PromptTemplate<TOut, TIn>;
+  options(o: PromptExecutionOptions): PromptTemplate<TOut, TIn>;
   save(name: string): Promise<PromptTemplate<TOut, TIn>>;
 }
 
@@ -163,6 +163,11 @@ class PromptTemplateImpl<TOut, TIn = PromptVariables>
     return rendered;
   }
   /* ----------------------- execution ---------------------------- */
+
+  options(opts: PromptExecutionOptions): PromptTemplate<TOut, TIn> {
+    this._executionOptions = opts;
+    return this as unknown as PromptTemplate<TOut, TIn>;
+  }
 
   async execute<R = TOut>(
     vars: TIn = {} as any,
@@ -288,17 +293,6 @@ class PromptTemplateImpl<TOut, TIn = PromptVariables>
     return makeCallable(copy);
   }
 
-  train(examples: Array<{ text: any; output: TOut }>): PromptTemplate<TOut, TIn> {
-    const block = examples
-      .map(ex => {
-        const i = typeof ex.text === 'string' ? ex.text : JSON.stringify(ex.text, null, 2);
-        const o = typeof ex.output === 'string' ? ex.output : JSON.stringify(ex.output, null, 2);
-        return `Input: ${i}\nOutput: ${o}\n---`;
-      })
-      .join('\n');
-    return this.prefix(`Examples:\n${block}\n\nNow, process the following input:`);
-  }
-
   using(model: string | ModelDefinition): PromptTemplate<TOut, TIn> {
     const originalExecute = this.execute;
     this.execute = (vars, o = {}) =>
@@ -351,7 +345,6 @@ function makeCallable<TOut, TIn>(
     'prefix',
     'suffix',
     'clone',
-    'train',
     'using',
     'options',
     'persist',

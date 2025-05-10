@@ -21,7 +21,8 @@ const extract = s.prompt`
     })
   ) 
 })
+.options({temperature: 0.9})
 .using('gpt4');
 
-// const result = await extract.execute({ text: 'I like to eat pizza and drink beer' });
-// console.log(result.entities.map(e => `name: ${e.name}, type: ${e.type}`));
+const result = await extract.execute({ text: 'I like to eat pizza and drink beer' });
+console.log(result.entities);

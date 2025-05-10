@@ -1,6 +1,7 @@
 // prompts/types.ts
 import { ModelDefinition } from '../types';
 import * as z from 'zod';
+
 export interface PromptExecutionOptions {
   model?: ModelDefinition | string;
   temperature?: number;
@@ -28,6 +29,22 @@ export interface PromptVariable {
 
 export type PromptSegment = string | PromptVariable;
 
+/**
+ * A prompt template is a function that takes an input and returns a string.
+ * It can also take an optional execution options object.
+ * 
+ * The template is a composition of segments and variables.
+ * Segments are either static text or variables.
+ * Variables are placeholders for input values.
+ * 
+ * The template can be executed with an input and an optional execution options object.
+ * The input is a record of variable names and values.
+ * The execution options are a record of execution options for the model.
+ * 
+ * The template can be rendered to a string with the render method.
+ * The template can be executed with an input and an optional execution options object.
+ */
+
 export interface PromptTemplate<TOutput = any, TInput = PromptVariables> {
   (v?: TInput, o?: PromptExecutionOptions): Promise<TOutput>;
   segments: PromptSegment[];
@@ -42,7 +59,6 @@ export interface PromptTemplate<TOutput = any, TInput = PromptVariables> {
   prefix: (t: string) => PromptTemplate<TOutput>;
   suffix: (t: string) => PromptTemplate<TOutput>;
   clone: () => PromptTemplate<TOutput>;
-  train: (e: { text: any; output: TOutput }[]) => PromptTemplate<TOutput>;
   using: (m: string | ModelDefinition) => PromptTemplate<TOutput>;
   options: (o: PromptExecutionOptions) => PromptTemplate<TOutput>;
   persist: (id: string) => PromptTemplate<TOutput>;
