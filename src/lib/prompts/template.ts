@@ -16,6 +16,7 @@ import * as z from 'zod';
 import { formatForPrompt } from '../utils/formatter';
 import { debug } from '../utils/debug';
 import { BuilderBase } from '../shared/builder-base';
+import { appendSchemaTypeHints } from '../schema';
 
 /* ------------------------------------------------------------------ */
 /* helper utils                                                       */
@@ -323,13 +324,23 @@ export function createTemplate<TOut, TIn = PromptVariables>(
 /* proxy helper                                                       */
 /* ------------------------------------------------------------------ */
 
-function makeCallable<TOut, TIn>(
-  tmpl: TemplateObject<TOut, TIn>,
-): PromptTemplate<TOut, TIn> {
-  if (tmpl[CALLABLE]) return tmpl as any;
 
-  const fn: any = async (vars: any = {}, opts: PromptExecutionOptions = {}) => {
+function makeCallable<TOut, TIn>(
+  // TemplateObject is the interface for PromptTemplateImpl
+  tmpl: TemplateObject<TOut, TIn>, 
+  // PromptTemplate is the public, callable interface
+): PromptTemplate<TOut, TIn> {      
+  if (tmpl[CALLABLE]) return tmpl as any; // Already callable
+
+  // This is the function that will be returned, making the template callable
+  const fnCallable: any = async (vars: any = {}, opts: PromptExecutionOptions = {}) => {
+    // Default action: execute the template
+    if (typeof tmpl.execute !== 'function') {
+        throw new Error("Internal error: TemplateObject does not have an execute method.");
+    }
     const res = await tmpl.execute(vars, opts);
+
+    // Post-processing (same as your existing logic)
     if (typeof res === 'string') {
       const parsed = extractJson(res);
       if (parsed && typeof parsed === 'object') return parsed;
@@ -339,28 +350,74 @@ function makeCallable<TOut, TIn>(
     return res;
   };
 
-  const chainable = [
-    'inputs',
-    'outputs',
-    'prefix',
-    'suffix',
+  // 1. Expose known direct properties (segments, variables) via getters
+  //    This ensures they are read from the underlying 'tmpl' instance.
+  Object.defineProperty(fnCallable, 'segments', {
+    get: () => tmpl.segments,
+    enumerable: true,
+    configurable: false, // typically false for interface properties
+  });
+  Object.defineProperty(fnCallable, 'variables', {
+    get: () => tmpl.variables,
+    enumerable: true,
+    configurable: false,
+  });
+  // Expose persistId and needsSave if they are part of PromptTemplate interface
+  if ('persistId' in tmpl) {
+    Object.defineProperty(fnCallable, 'persistId', {
+      get: () => tmpl.persistId,
+      set: (value) => { (tmpl as any).persistId = value; }, // if mutable
+      enumerable: true,
+    });
+  }
+  if ('needsSave' in tmpl) {
+     Object.defineProperty(fnCallable, 'needsSave', {
+      get: () => tmpl.needsSave,
+      set: (value) => { (tmpl as any).needsSave = value; }, // if mutable
+      enumerable: true,
+    });
+  }
+
+
+  // 2. Expose known methods by binding them to the 'tmpl' instance
+  //    This ensures 'this' is correct when these methods are called on fnCallable.
+  const methodsToBind: (keyof TemplateObject<TOut, TIn>)[] = [
+    'render', 
+    'execute', // execute is also the default call, but can be called directly
+    'inputs', 
+    'outputs', 
+    'prefix', 
+    'suffix', 
     'clone',
-    'using',
-    'options',
-    'persist',
+    // 'train', // Add if part of your TemplateObject and PromptTemplate interface
+    'using', 
+    'options', 
+    'persist', 
     'save',
+    // 'formatResponse' // Add if part of your TemplateObject and PromptTemplate interface
   ];
 
-  chainable.forEach(m => {
-    fn[m] = (...a: any[]) => {
-      const r = (tmpl as any)[m](...a);
-      return r && r.segments ? makeCallable(r) : r;
-    };
+  methodsToBind.forEach(methodName => {
+    const method = tmpl[methodName];
+    if (typeof method === 'function') {
+      // Important: The result of chainable methods (inputs, outputs, etc.)
+      // should also be wrapped by makeCallable if they return a new template instance.
+      fnCallable[methodName] = (...args: any[]) => {
+        const result = (method as Function).apply(tmpl, args);
+        // If the method returns a new template-like object (identified by having 'segments' or being a new builder),
+        // then this result also needs to be made callable.
+        // This matches your existing chainable logic.
+        if (result && typeof result === 'object' && 'segments' in result && typeof result.execute === 'function') {
+          return makeCallable(result as TemplateObject<any, any>);
+        }
+        return result; // For methods like save (Promise) or render (string)
+      };
+    }
   });
-
-  Object.assign(fn, tmpl);
-  fn[CALLABLE] = true;
-  return fn as PromptTemplate<TOut, TIn>;
+  
+  // Mark as callable (your existing logic)
+  fnCallable[CALLABLE] = true;
+  return fnCallable as PromptTemplate<TOut, TIn>;
 }
 
 /* ------------------------------------------------------------------ */
@@ -384,38 +441,7 @@ function buildMessages(prompt: string, opts: PromptExecutionOptions) {
   return msgs;
 }
 
-/**
- * Generates a simple JSON example for a given schema shape
- */
-function appendSchemaTypeHints(shape: z.ZodRawShape): string {
-  const example: Record<string, any> = {};
-  debug('prompt', 'Building schema type hints for: %o', Object.keys(shape));
-  
-  // Process each property in the shape
-  Object.entries(shape).forEach(([key, schema]) => {
-    if (schema instanceof z.ZodString) {
-      example[key] = "string";
-      debug('prompt', 'Field %s is a string type', key);
-    } else if (schema instanceof z.ZodNumber) {
-      example[key] = 0;
-      debug('prompt', 'Field %s is a number type', key);
-    } else if (schema instanceof z.ZodBoolean) {
-      example[key] = false;
-      debug('prompt', 'Field %s is a boolean type', key);
-    } else if (schema instanceof z.ZodArray) {
-      example[key] = ["item"];
-      debug('prompt', 'Field %s is an array type', key);
-    } else if (schema instanceof z.ZodObject) {
-      example[key] = { "nested": "object" };
-      debug('prompt', 'Field %s is an object type', key);
-    } else {
-      example[key] = null;
-      debug('prompt', 'Field %s has unknown type: %s', key, schema.constructor.name);
-    }
-  });
-  
-  return JSON.stringify(example, null, 2);
-}
+
 
 function extractJson(text: string): any | null {
   debug('prompt', 'Attempting to extract JSON from text (%d chars)', text.length);

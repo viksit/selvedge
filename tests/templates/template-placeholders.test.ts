@@ -25,9 +25,7 @@ describe('Template Placeholders', () => {
 
     const withModel = withExamples.using("model-name");
     expect(typeof withModel.persist).toBe('function');
-
     const result = withModel.persist("test-id");
-
     expect(result).toBeDefined();
     expect(typeof result.build).toBe('function');
     expect(typeof result.generate).toBe('function');
