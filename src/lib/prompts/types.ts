@@ -51,18 +51,20 @@ export interface PromptTemplate<TOutput = any, TInput = PromptVariables> {
   variables: PromptVariable[];
   persistId?: string;
   needsSave?: boolean;
-  render: (v: PromptVariables) => string;
+  render: (v: TInput) => string; 
   execute: <R = TOutput>(v: TInput, o?: PromptExecutionOptions) => Promise<R>;
-  inputs<S extends z.ZodRawShape>(shape: S): PromptTemplate<TOutput, z.infer<z.ZodObject<S>>>;
-  outputs<S extends z.ZodRawShape>(shape: S): PromptTemplate<z.infer<z.ZodObject<S>>, TInput>;
-  formatResponse: (r: string) => TOutput;
+
+  inputs<InputSchema extends z.ZodObject<any, any, any>>(schema: InputSchema): PromptTemplate<TOutput, z.infer<InputSchema>>; 
+  outputs<OutputSchema extends z.ZodObject<any, any, any>>(schema: OutputSchema): PromptTemplate<z.infer<OutputSchema>, TInput>; 
+  
+  formatResponse: (r: string) => TOutput; 
   prefix: (t: string) => PromptTemplate<TOutput>;
   suffix: (t: string) => PromptTemplate<TOutput>;
-  clone: () => PromptTemplate<TOutput>;
-  using: (m: string | ModelDefinition) => PromptTemplate<TOutput>;
-  options: (o: PromptExecutionOptions) => PromptTemplate<TOutput>;
-  persist: (id: string) => PromptTemplate<TOutput>;
-  save: (n: string) => Promise<PromptTemplate<TOutput>>;
+  clone: () => PromptTemplate<TOutput, TInput>; 
+  using: (m: string | ModelDefinition) => PromptTemplate<TOutput, TInput>; 
+  options: (o: PromptExecutionOptions) => PromptTemplate<TOutput, TInput>; 
+  persist: (id: string) => PromptTemplate<TOutput, TInput>; 
+  save: (n: string) => Promise<PromptTemplate<TOutput, TInput>>; 
 }
 
 export interface PromptTemplateFactory {

@@ -95,8 +95,8 @@ interface TemplateObject<TOut, TIn = PromptVariables> extends BuilderBase<TOut> 
   [CALLABLE]?: true;
   render(vars: TIn): string;
   execute<R = TOut>(vars: TIn, opts?: PromptExecutionOptions): Promise<R>;
-  inputs<S extends z.ZodRawShape>(shape: S): PromptTemplate<TOut, z.infer<z.ZodObject<S>>>;
-  outputs<S extends z.ZodRawShape>(shape: S): PromptTemplate<z.infer<z.ZodObject<S>>, TIn>;
+  inputs<InputSchema extends z.ZodObject<any, any, any>>(schema: InputSchema): PromptTemplate<TOut, z.infer<InputSchema>>; 
+  outputs<OutputSchema extends z.ZodObject<any, any, any>>(schema: OutputSchema): PromptTemplate<z.infer<OutputSchema>, TIn>; 
   prefix(txt: string): PromptTemplate<TOut, TIn>;
   suffix(txt: string): PromptTemplate<TOut, TIn>;
   clone(): PromptTemplate<TOut, TIn>;
@@ -256,27 +256,33 @@ class PromptTemplateImpl<TOut, TIn = PromptVariables>
 
   /* ----------------------- schema builders ---------------------- */
 
-  inputs<S extends z.ZodRawShape>(shape: S): PromptTemplate<TOut, z.infer<z.ZodObject<S>>> {
-    debug('prompt', 'Setting input schema: %o', Object.keys(shape));
-    this._inputSchema = z.object(shape);
-    return this as unknown as PromptTemplate<TOut, z.infer<z.ZodObject<S>>>;
+  inputs<InputSchema extends z.ZodObject<any, any, any>>(
+    schema: InputSchema
+  ): PromptTemplate<TOut, z.infer<InputSchema>> {
+    
+    debug('prompt', 'Setting input schema with shape: %o', Object.keys(schema.shape));
+    this._inputSchema = schema;    
+    return this as unknown as PromptTemplate<TOut, z.infer<InputSchema>>; // <-- MODIFIED return type cast
   }
 
-  outputs<S extends z.ZodRawShape>(shape: S): PromptTemplate<z.infer<z.ZodObject<S>>, TIn> {
-    debug('prompt', 'Setting output schema: %o', Object.keys(shape));
-    this._outputSchema = z.object(shape);
+  outputs<OutputSchema extends z.ZodObject<any, any, any>>(
+    schema: OutputSchema
+  ): PromptTemplate<z.infer<OutputSchema>, TIn> {
+  
+    // Change: Log the shape from the schema and assign schema directly
+    debug('prompt', 'Setting output schema with shape: %o', Object.keys(schema.shape)); // <-- MODIFIED logging
+    this._outputSchema = schema;
     
     // Generate a simple example of the expected JSON structure
-    const example = appendSchemaTypeHints(shape);
+    const example = appendSchemaTypeHints(schema.shape);
     debug('prompt', 'Generated schema example for LLM: %s', example);
     
     // Add instructions to the prompt for the LLM to return JSON
     this.segments.push(`\n\nIMPORTANT: You must respond with a valid JSON object that matches this structure:\n${example}\n`);
     debug('prompt', 'Added JSON format instructions to prompt');
     
-    return this as unknown as PromptTemplate<z.infer<z.ZodObject<S>>, TIn>;
+    return this as unknown as PromptTemplate<z.infer<OutputSchema>, TIn>; // <-- MODIFIED return type cast
   }
-
   /* ----------------------- convenience builders ----------------- */
 
   prefix(txt: string): PromptTemplate<TOut, TIn> {
@@ -291,6 +297,17 @@ class PromptTemplateImpl<TOut, TIn = PromptVariables>
 
   clone(): PromptTemplate<TOut, TIn> {
     const copy = new PromptTemplateImpl<TOut, TIn>([...this.segments], [...this.variables]);
+    copy._inputSchema = this._inputSchema;         // Copy the input schema
+    copy._outputSchema = this._outputSchema;       // Copy the output schema
+    copy._executionOptions = { ...this._executionOptions }; // Shallow copy execution options
+    
+    // Also copy persistence-related fields if they are part of the state
+    if (this.hasOwnProperty('persistId')) { // Or check if this.persistId is not undefined
+        (copy as any).persistId = this.persistId;
+    }
+    if (this.hasOwnProperty('needsSave')) { // Or check if this.needsSave is not undefined
+        (copy as any).needsSave = this.needsSave;
+    }
     return makeCallable(copy);
   }
 
