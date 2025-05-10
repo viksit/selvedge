@@ -24,4 +24,4 @@ const extract = s.prompt`
 .using('gpt4');
 
 const result = await extract.execute({ text: 'I like to eat pizza and drink beer' });
-console.log(result);
+console.log(result.entities.map(e => `name: ${e.name}, type: ${e.type}`));
