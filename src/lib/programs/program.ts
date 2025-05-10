@@ -12,7 +12,9 @@ import { debug } from '../utils/debug';
 import * as ts from 'typescript';
 import * as vm from 'vm';
 import { BuilderBase } from '../shared/builder-base';
-import { PromptTemplate } from '@prompts/types';
+import { PromptTemplate } from '../prompts/types';
+import * as z from 'zod';
+import { appendSchemaTypeHints } from '../schema';
 
 // --- Utility: TypeScript code evaluation ---
 function evaluateTypeScript(code: string): any {
@@ -133,10 +135,13 @@ function extractCodeFromResponse(response: string): string {
 }
 
 // --- Main ProgramBuilder Implementation ---
-class ProgramBuilderImpl<T> extends BuilderBase<ProgramExecutionOptions> {
-  template: PromptTemplate<T>;
+class ProgramBuilderImpl<TOut = any, TIn = ProgramVariables> extends BuilderBase<ProgramExecutionOptions> {
+  template: PromptTemplate<TOut>;
   exampleList: ProgramExample[];
   generatedCode: string | null;
+  /** Optional Zod schemas for runtime validation */
+  _inputSchema?: z.ZodTypeAny;
+  _outputSchema?: z.ZodTypeAny;
 
   constructor(strings: TemplateStringsArray, values: any[]) {
     super();
@@ -147,19 +152,19 @@ class ProgramBuilderImpl<T> extends BuilderBase<ProgramExecutionOptions> {
   }
 
   // Fluent API: options
-  options(opts: ProgramExecutionOptions): ProgramBuilder<T> {
+  options(opts: ProgramExecutionOptions): ProgramBuilder<TOut, TIn> {
     const copy = this._clone();
     copy._executionOptions = { ...this._executionOptions, ...opts };
     return makeProgramCallable(copy);
   }
 
   // Fluent API: examples
-  withExamples(newExamples: ProgramExample[]): ProgramBuilder<T> {
+  withExamples(newExamples: ProgramExample[]): ProgramBuilder<TOut, TIn> {
     const copy = this._clone();
     copy.exampleList = [...this.exampleList, ...newExamples];
     return makeProgramCallable(copy);
   }
-  examples(inputOutputMap: Record<string, any>): ProgramBuilder<T> {
+  examples(inputOutputMap: Record<string, any>): ProgramBuilder<TOut, TIn> {
     const newExamples: ProgramExample[] = Object.entries(inputOutputMap).map(([input, output]) => ({
       input: { input },
       output: typeof output === 'string' ? output : JSON.stringify(output, null, 2)
@@ -167,20 +172,15 @@ class ProgramBuilderImpl<T> extends BuilderBase<ProgramExecutionOptions> {
     return this.withExamples(newExamples);
   }
 
-  // Fluent API: returns
-  returns<U>(): ProgramBuilder<U> {
-    return makeProgramCallable(this as unknown as ProgramBuilderImpl<U>);
-  }
-
   // Fluent API: using
-  using(model: string | ModelDefinition): ProgramBuilder<T> {
+  using(model: string | ModelDefinition): ProgramBuilder<TOut, TIn> {
     const copy = this._clone();
     copy._executionOptions = { ...this._executionOptions, model };
     return makeProgramCallable(copy);
   }
 
   // Persistence
-  persist(id: string): ProgramBuilder<T> {
+  persist(id: string): ProgramBuilder<TOut, TIn> {
     this.persistId = id;
     this.needsSave = true;
     return makeProgramCallable(this);
@@ -347,34 +347,121 @@ class ProgramBuilderImpl<T> extends BuilderBase<ProgramExecutionOptions> {
   }
 
   // --- Private: clone for immutability ---
-  private _clone(): ProgramBuilderImpl<T> {
-    const copy = new ProgramBuilderImpl<T>([] as any, []);
+  private _clone(): ProgramBuilderImpl<TOut, TIn> {
+    const copy = new ProgramBuilderImpl<TOut, TIn>([] as any, []);
     copy.template = this.template;
     copy.exampleList = [...this.exampleList];
     copy.generatedCode = this.generatedCode;
     copy._executionOptions = { ...this._executionOptions };
     copy.persistId = this.persistId;
     copy.needsSave = this.needsSave;
+    copy._inputSchema = this._inputSchema;
+    copy._outputSchema = this._outputSchema;
     return copy;
+  }
+
+  /** Attach a Zod schema for validating program inputs */
+  inputs<I extends z.ZodTypeAny>(schema: I): ProgramBuilder<TOut, z.infer<I>> {
+    this._inputSchema = schema;
+
+    // Add a hint so the LLM sees the expected input structure
+    try {
+      let rawShape: z.ZodRawShape | undefined;
+      if (schema instanceof z.ZodObject) {
+        rawShape = schema.shape;
+      } else if (schema && typeof (schema as any)._def === 'object') {
+        if ((schema as any)._def.schema instanceof z.ZodObject) {
+          rawShape = ((schema as any)._def.schema as z.ZodObject<any>).shape;
+        }
+      }
+      if (rawShape) {
+        const example = appendSchemaTypeHints(rawShape);
+        debug('program', 'Generated INPUT schema example for LLM: %s', example);
+        this.template.segments.unshift(`IMPORTANT: Your function **must** accept an input matching this JSON shape:\n${example}\n\n`);
+        debug('program', 'Prepended input JSON instructions to program prompt');
+      }
+    } catch (err) {
+      debug('program', 'Failed to append input schema type hints: %o', err);
+    }
+    return makeProgramCallable(this as unknown as ProgramBuilderImpl<TOut, z.infer<I>>);
+  }
+
+  /** Attach a Zod schema for validating program outputs */
+  outputs<O extends z.ZodTypeAny>(schema: O): ProgramBuilder<z.infer<O>, TIn> {
+    this._outputSchema = schema;
+
+    // ------------------------------------------------------------------
+    // Add type-hint instructions for the LLM, mirroring prompt.outputs()
+    // ------------------------------------------------------------------
+    try {
+      let rawShape: z.ZodRawShape | undefined;
+
+      if (schema instanceof z.ZodObject) {
+        rawShape = schema.shape;
+      } else if (schema && typeof (schema as any)._def === 'object') {
+        // If the user passed a raw shape wrapped via z.object(shape)
+        if ((schema as any)._def.schema instanceof z.ZodObject) {
+          rawShape = ((schema as any)._def.schema as z.ZodObject<any>).shape;
+        }
+      }
+
+      if (rawShape) {
+        const example = appendSchemaTypeHints(rawShape);
+        debug('program', 'Generated schema example for LLM: %s', example);
+        this.template.segments.push(`\n\nIMPORTANT: You must respond with a valid JSON object that matches this structure:\n${example}\n`);
+        debug('program', 'Added JSON format instructions to program prompt');
+      }
+    } catch (err) {
+      debug('program', 'Failed to append schema type hints: %o', err);
+    }
+
+    return makeProgramCallable(this as unknown as ProgramBuilderImpl<z.infer<O>, TIn>);
+  }
+
+  /** @deprecated Use .outputs() instead */
+  returns<U>(): ProgramBuilder<U, TIn> {
+    return makeProgramCallable(this as unknown as ProgramBuilderImpl<U, TIn>);
   }
 }
 
 // --- Proxy shell to make builder callable ---
-function makeProgramCallable<T>(builder: ProgramBuilderImpl<T>): ProgramBuilder<T> {
+function makeProgramCallable<TOut = any, TIn = ProgramVariables>(builder: ProgramBuilderImpl<TOut, TIn>): ProgramBuilder<TOut, TIn> {
   let finalExecutableFn: any | null = null;
   let buildPromise: Promise<any> | null = null;
 
   const callable = async (...args: any[]) => {
+    // If we haven't built the executable yet, use this first call's arguments
     if (!finalExecutableFn) {
       if (!buildPromise) {
-        // Call builder.build() which returns the fully processed, callable function proxy
-        buildPromise = builder.build();
+        // Derive a representative variables object for build()
+        let sampleVars: any = {};
+        if (builder._inputSchema) {
+          sampleVars = args.length === 1 ? args[0] : args;
+          debug('program', 'Using first-call inputs as sampleVars for build(): %o', sampleVars);
+        }
+        buildPromise = builder.build(sampleVars, { forceRegenerate: true });
       }
-      // The result of builder.build() is the function proxy itself
       finalExecutableFn = await buildPromise;
-      buildPromise = null; // Reset for potential future re-builds if builder state changes
+      buildPromise = null;
     }
-    return await finalExecutableFn(...args);
+
+    // ---------------- Input validation ----------------
+    let processedArgs: any[] = args;
+    if (builder._inputSchema) {
+      const validated = args.length === 1
+        ? builder._inputSchema.parse(args[0])
+        : builder._inputSchema.parse(args);
+      processedArgs = args.length === 1 ? [validated] : validated;
+    }
+
+    // Execute the generated function
+    let result = await finalExecutableFn(...processedArgs);
+
+    // ---------------- Output validation ---------------
+    if (builder._outputSchema) {
+      result = builder._outputSchema.parse(result);
+    }
+    return result;
   };
   // Attach all builder methods/properties
   Object.getOwnPropertyNames(ProgramBuilderImpl.prototype).forEach(k => {
@@ -383,21 +470,21 @@ function makeProgramCallable<T>(builder: ProgramBuilderImpl<T>): ProgramBuilder<
     }
   });
   // Forward properties
-  ['generatedCode', 'persistId', 'needsSave', '_executionOptions', 'exampleList', 'template'].forEach(p => {
+  ['generatedCode', 'persistId', 'needsSave', '_executionOptions', 'exampleList', 'template', '_inputSchema', '_outputSchema'].forEach(p => {
     Object.defineProperty(callable, p, {
       get: () => (builder as any)[p],
       set: v => { (builder as any)[p] = v; }
     });
   });
-  return callable as ProgramBuilder<T>;
+  return callable as unknown as ProgramBuilder<TOut, TIn>;
 }
 
 // --- Exported API ---
-export function createProgram<T = string>(
+export function createProgram<TOut = any, TIn = ProgramVariables>(
   strings: TemplateStringsArray,
   values: any[]
-): ProgramBuilder<T> {
+): ProgramBuilder<TOut, TIn> {
   debug('program', 'createProgram called');
-  const builder = new ProgramBuilderImpl<T>(strings, values);
+  const builder = new ProgramBuilderImpl<TOut, TIn>(strings, values);
   return makeProgramCallable(builder);
 }
