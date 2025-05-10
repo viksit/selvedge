@@ -1,5 +1,6 @@
 // prompts/types.ts
 import { ModelDefinition } from '../types';
+import * as z from 'zod';
 
 export interface PromptExecutionOptions {
   model?: ModelDefinition | string;
@@ -28,24 +29,47 @@ export interface PromptVariable {
 
 export type PromptSegment = string | PromptVariable;
 
-export interface PromptTemplate<T = any> {
-  (v?: PromptVariables, o?: PromptExecutionOptions): Promise<T>;
+/**
+ * A prompt template is a function that takes an input and returns a string.
+ * It can also take an optional execution options object.
+ * 
+ * The template is a composition of segments and variables.
+ * Segments are either static text or variables.
+ * Variables are placeholders for input values.
+ * 
+ * The template can be executed with an input and an optional execution options object.
+ * The input is a record of variable names and values.
+ * The execution options are a record of execution options for the model.
+ * 
+ * The template can be rendered to a string with the render method.
+ * The template can be executed with an input and an optional execution options object.
+ */
+
+export interface PromptTemplate<TOutput = any, TInput = PromptVariables> {
+  (v?: TInput, o?: PromptExecutionOptions): Promise<TOutput>;
   segments: PromptSegment[];
   variables: PromptVariable[];
   persistId?: string;
   needsSave?: boolean;
-  render: (v: PromptVariables) => string;
-  execute: <R = T>(v: PromptVariables, o?: PromptExecutionOptions) => Promise<R>;
-  returns: <R = T>() => PromptTemplate<R>;
-  formatResponse: (r: string) => T;
-  prefix: (t: string) => PromptTemplate<T>;
-  suffix: (t: string) => PromptTemplate<T>;
-  clone: () => PromptTemplate<T>;
-  train: (e: { text: any; output: T }[]) => PromptTemplate<T>;
-  using: (m: string | ModelDefinition) => PromptTemplate<T>;
-  options: (o: PromptExecutionOptions) => PromptTemplate<T>;
-  persist: (id: string) => PromptTemplate<T>;
-  save: (n: string) => Promise<PromptTemplate<T>>;
+  render: (v: TInput) => string; 
+  execute: <R = TOutput>(v: TInput, o?: PromptExecutionOptions) => Promise<R>;
+
+  inputs<S extends z.ZodRawShape | z.ZodObject<any, any, any>>(
+    schemaOrShape: S
+  ): PromptTemplate<TOutput, z.infer<S extends z.ZodRawShape ? z.ZodObject<S> : S>>;
+  
+  outputs<S extends z.ZodRawShape | z.ZodObject<any, any, any>>(
+    schemaOrShape: S
+  ): PromptTemplate<z.infer<S extends z.ZodRawShape ? z.ZodObject<S> : S>, TInput>;
+  
+  formatResponse: (r: string) => TOutput; 
+  prefix: (t: string) => PromptTemplate<TOutput, TInput>;
+  suffix: (t: string) => PromptTemplate<TOutput, TInput>;
+  clone: () => PromptTemplate<TOutput, TInput>; 
+  using: (m: string | ModelDefinition) => PromptTemplate<TOutput, TInput>; 
+  options: (o: PromptExecutionOptions) => PromptTemplate<TOutput, TInput>; 
+  persist: (id: string) => PromptTemplate<TOutput, TInput>; 
+  save: (n: string) => Promise<PromptTemplate<TOutput, TInput>>; 
 }
 
 export interface PromptTemplateFactory {

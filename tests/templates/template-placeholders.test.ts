@@ -12,22 +12,16 @@ describe('Template Placeholders', () => {
     `;
 
     // Test the initial method chaining
-    const withExamples = template.examples({
-      "test": "result"
-    });
-
-    expect(typeof withExamples.using).toBe('function');
+    
 
     // Register a mock model with the alias we're going to use
     selvedge.models({
       "model-name": selvedge.mock('test-model')
     });
 
-    const withModel = withExamples.using("model-name");
+    const withModel = template.using("model-name");
     expect(typeof withModel.persist).toBe('function');
-
     const result = withModel.persist("test-id");
-
     expect(result).toBeDefined();
     expect(typeof result.build).toBe('function');
     expect(typeof result.generate).toBe('function');

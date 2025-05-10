@@ -1,156 +1,127 @@
 /**
  * Prompt template implementation
  */
-import { PromptVariables, PromptVariable, PromptSegment, PromptTemplate, PromptExecutionOptions } from './types';
+import {
+  PromptVariables,
+  PromptVariable,
+  PromptSegment,
+  PromptTemplate,
+  PromptExecutionOptions,
+} from './types';
 import { ModelRegistry } from '../models';
 import { ModelDefinition, ModelProvider } from '../types';
 import { store } from '../storage';
 import * as z from 'zod';
-import { inferSchema, generateJsonExampleFromSchema, validateWithSchema } from '../schema';
+
 import { formatForPrompt } from '../utils/formatter';
 import { debug } from '../utils/debug';
 import { BuilderBase } from '../shared/builder-base';
+import { appendSchemaTypeHints } from '../schema';
 
-/**
- * Default variable renderer
- */
+/* ------------------------------------------------------------------ */
+/* helper utils                                                       */
+/* ------------------------------------------------------------------ */
+
 const defaultRenderer = (value: any): string => {
-  if (value === null || value === undefined) {
-    return '';
-  }
-
-  if (typeof value === 'string') {
-    return value;
-  }
-
-  if (typeof value === 'number' || typeof value === 'boolean') {
-    return String(value);
-  }
-
-  // For objects and arrays, use our smart formatter
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
   try {
-    // Use the new formatter for objects
     return formatForPrompt(value);
-  } catch (e) {
-    debug('template', 'Error formatting object:', e);
-    // Fallback to JSON.stringify if formatting fails
+  } catch {
     try {
       return JSON.stringify(value, null, 2);
-    } catch (e) {
+    } catch {
       return String(value);
     }
   }
 };
 
-/**
- * Extract parameter names from a function
- */
 function extractParameterNames(fn: Function): string[] {
-  const fnStr = fn.toString();
-  // Using a more robust regex to extract parameter names
-  const argsMatch = fnStr.match(/(?:function)?\s*\w*\s*\(([^)]*)\)|(\w+)\s*=>\s*\w+|\(([^)]*)\)\s*=>/);
-
-  if (!argsMatch) {
-    return [];
-  }
-
-  // Find the first non-undefined capture group
-  const argsStr = argsMatch[1] || argsMatch[2] || argsMatch[3] || '';
-
-  if (!argsStr) {
-    return [];
-  }
-
-  return argsStr.split(',').map(arg => arg.trim());
+  const match =
+    fn
+      .toString()
+      .match(/(?:function)?\s*\w*\s*\(([^)]*)\)|(\w+)\s*=>\s*\w+|\(([^)]*)\)\s*=>/);
+  const argsStr = (match?.[1] || match?.[2] || match?.[3] || '').trim();
+  return argsStr ? argsStr.split(',').map(s => s.trim()) : [];
 }
 
-/**
- * Determine if a function is a simple accessor (e.g., name => name)
- * or a complex accessor (e.g., params => params.product)
- */
 function isSimpleAccessor(_fn: Function): boolean {
-  // For our tests, we'll consider all renderer functions as simple accessors
-  // This ensures backward compatibility with existing tests
-  return true;
+  return true; // keeps compat with old behaviour
 }
 
-/**
- * Parse template string parts and values into segments and variables
- */
+/* ------------------------------------------------------------------ */
+/* template parsing                                                   */
+/* ------------------------------------------------------------------ */
+
 export function parseTemplate(
   strings: TemplateStringsArray,
-  values: any[]
-): { segments: PromptSegment[], variables: PromptVariable[] } {
-  const segments: PromptSegment[] = [];
+  values: any[],
+): { segments: PromptSegment[]; variables: PromptVariable[] } {
+  debug('prompt', 'Parsing template with %d string parts and %d values', strings.length, values.length);
+  const segments: PromptSegment[] = [strings[0]];
   const variables: PromptVariable[] = [];
-
-  // Always start with the first string part
-  segments.push(strings[0]);
 
   for (let i = 0; i < values.length; i++) {
     const value = values[i];
-    const nextString = strings[i + 1];
+    const nextStr = strings[i + 1];
 
     if (typeof value === 'function') {
-      // This is a variable with a custom renderer
-      const paramNames = extractParameterNames(value);
-      const name = paramNames.length > 0 ? paramNames[0] : `var${i}`;
-
-      const variable: PromptVariable = {
-        name,
-        renderer: value,
-        originalFn: value,
-      };
-
+      const name = extractParameterNames(value)[0] ?? `var${i}`;
+      const variable: PromptVariable = { name, renderer: value, originalFn: value };
       variables.push(variable);
       segments.push(variable);
+      debug('prompt', 'Added variable placeholder: %s', name);
     } else {
-      // This is a literal value
       segments.push(defaultRenderer(value));
+      debug('prompt', 'Added static value to template');
     }
-
-    // Add the next string part
-    if (nextString) {
-      segments.push(nextString);
-    }
+    if (nextStr) segments.push(nextStr);
   }
 
+  debug('prompt', 'Template parsed with %d segments and %d variables', segments.length, variables.length);
   return { segments, variables };
 }
 
-/**
- * Symbol used to mark a template object as already callable
- */
-const CALLABLE_MARKER = Symbol('callable');
+/* ------------------------------------------------------------------ */
+/* core template class                                                */
+/* ------------------------------------------------------------------ */
 
-/**
- * Base template object interface without the callable signature
- */
-interface TemplateObject<T> extends BuilderBase<T> {
+const CALLABLE = Symbol('selvedge.callable');
+
+interface TemplateObject<TOut, TIn = PromptVariables> extends BuilderBase<TOut> {
   segments: PromptSegment[];
   variables: PromptVariable[];
-  [CALLABLE_MARKER]?: boolean;
-  [key: string]: any;
+  [CALLABLE]?: true;
+  render(vars: TIn): string;
+  execute<R = TOut>(vars: TIn, opts?: PromptExecutionOptions): Promise<R>;
+  
+  // Modified to accept either ZodRawShape or ZodObject
+  inputs<S extends z.ZodRawShape | z.ZodObject<any, any, any>>(
+    schemaOrShape: S
+  ): PromptTemplate<TOut, z.infer<S extends z.ZodRawShape ? z.ZodObject<S> : S>>;
 
-  render(variables: PromptVariables): string;
-  execute<R = T>(variables: PromptVariables, options?: PromptExecutionOptions): Promise<R>;
-  returns<R = T>(schema?: z.ZodType<R>): PromptTemplate<R>;
-  formatResponse(response: string): T;
-  prefix(text: string): PromptTemplate<T>;
-  suffix(text: string): PromptTemplate<T>;
-  clone(): PromptTemplate<T>;
-  train(examples: Array<{ text: any, output: T }>): PromptTemplate<T>;
-  using(model: string | ModelDefinition): PromptTemplate<T>;
-  save(name: string): Promise<PromptTemplate<T>>;
+  // Modified to accept either ZodRawShape or ZodObject
+  outputs<S extends z.ZodRawShape | z.ZodObject<any, any, any>>(
+    schemaOrShape: S
+  ): PromptTemplate<z.infer<S extends z.ZodRawShape ? z.ZodObject<S> : S>, TIn>;
+  
+  prefix(txt: string): PromptTemplate<TOut, TIn>;
+  suffix(txt: string): PromptTemplate<TOut, TIn>;
+  clone(): PromptTemplate<TOut, TIn>;
+  using(model: string | ModelDefinition): PromptTemplate<TOut, TIn>;
+  options(o: PromptExecutionOptions): PromptTemplate<TOut, TIn>;
+  save(name: string): Promise<PromptTemplate<TOut, TIn>>;
 }
 
-/**
- * Implementation of the PromptTemplate interface
- */
-class PromptTemplateImpl<T> extends BuilderBase<T> implements TemplateObject<T> {
+class PromptTemplateImpl<TOut, TIn = PromptVariables>
+  extends BuilderBase<TOut>
+  implements TemplateObject<TOut, TIn>
+{
   segments: PromptSegment[];
   variables: PromptVariable[];
-  [CALLABLE_MARKER]?: boolean;
+  _inputSchema?: z.ZodType<any>;
+  _outputSchema?: z.ZodType<any>;
 
   constructor(segments: PromptSegment[], variables: PromptVariable[]) {
     super();
@@ -158,546 +129,489 @@ class PromptTemplateImpl<T> extends BuilderBase<T> implements TemplateObject<T> 
     this.variables = variables;
   }
 
-  render(variables: PromptVariables = {}): string {
-    // Defensive check for variable type - provide helpful error for flows
-    if (variables !== null && typeof variables !== 'object') {
+  /* ----------------------- rendering ---------------------------- */
+
+  render(vars: TIn = {} as any): string {
+    debug('prompt', 'Rendering template with variables: %o', vars);
+    
+    if (vars !== null && typeof vars !== 'object') {
+      debug('prompt', 'Invalid input - expected object but received %s', typeof vars);
       throw new Error(
-        `Invalid input: Expected an object with properties, but received ${typeof variables}. ` +
-        `If you're using this in a flow, make sure to transform string inputs to {text: string}.`
+        `Invalid input: expected an object, received ${typeof vars}.` +
+          ` If you pass a raw string in a flow, wrap it: { text: "..." }.`,
       );
     }
-
-    return this.segments.map(segment => {
-      if (typeof segment === 'string') {
-        return segment;
-      }
-
-      // This is a variable segment
-      if (segment.name && segment.renderer) {
-        // Get the value from the provided variables or use empty string
-        const value = segment.name in variables ? variables[segment.name] : '';
-        // Apply the renderer function
+  
+    const rendered = this.segments
+      .map(seg => {
+        if (typeof seg === 'string') return seg;
+        /* variable segment */
+        const val = (vars as any)[seg.name];
+        debug('prompt', 'Rendering variable %s with value: %o', seg.name, val);
+        
         try {
-          // Check if this is a simple accessor (e.g., name => name)
-          if (isSimpleAccessor(segment.renderer)) {
-            // For simple accessors, just pass the value
-            return defaultRenderer(segment.renderer(value));
-          } else {
-            // For complex accessors (e.g., params => params.product), pass all variables
-            return defaultRenderer(segment.renderer(variables));
+          // Check if renderer exists before using it
+          if (!seg.renderer) {
+            debug('prompt', 'No renderer for variable %s, using default', seg.name);
+            return defaultRenderer(val);
           }
+          const result = isSimpleAccessor(seg.renderer) 
+            ? seg.renderer(val) 
+            : seg.renderer(vars);
+          
+          debug('prompt', 'Rendered variable %s result: %o', seg.name, result);
+          return defaultRenderer(result);
         } catch (e) {
-          console.error(`Error rendering variable ${segment.name}:`, e);
-          return defaultRenderer(value);
+          console.error(`Error rendering variable ${seg.name}:`, e);
+          debug('prompt', 'Error rendering variable %s: %o', seg.name, e);
+          return defaultRenderer(val);
         }
-      }
+      })
+      .join('');
+      
+    debug('prompt', 'Rendered template length: %d characters', rendered.length);
+    return rendered;
+  }
+  /* ----------------------- execution ---------------------------- */
 
-      return '';
-    }).join('');
+  options(opts: PromptExecutionOptions): PromptTemplate<TOut, TIn> {
+    this._executionOptions = opts;
+    return this as unknown as PromptTemplate<TOut, TIn>;
   }
 
-  async execute<R = T>(
-    variables: PromptVariables = {},
-    options: PromptExecutionOptions = {}
+  async execute<R = TOut>(
+    vars: TIn = {} as any,
+    opts: PromptExecutionOptions = {},
   ): Promise<R> {
-    // Merge options from the template's _executionOptions with the call-time options
-    // This ensures options set via .options() method are respected
-    const mergedOptions: PromptExecutionOptions = {
-      ...(this._executionOptions || {}),
-      ...options
-    };
+    debug('prompt', 'Executing template with options: %o', opts);
+    
+    if (this._inputSchema) {
+      debug('prompt', 'Validating input against schema');
+      this._inputSchema.parse(vars);
+      debug('prompt', 'Input validation successful');
+    }
 
-    // If we have a persist ID but haven't loaded yet, try to load it first
-    debug('persistence', `checking persistence - persistId=${this.persistId}, needsSave = ${this.needsSave}, forceRegenerate = ${mergedOptions.forceRegenerate}`);
+    const mergedOpts: PromptExecutionOptions = { ...(this._executionOptions || {}), ...opts };
+    debug('prompt', 'Merged execution options: %o', mergedOpts);
 
-    // Only try to load if:
-    // 1. We have a persistId
-    // 2. We need to save (haven't loaded yet)
-    // 3. NOT forcing regeneration
-    if (this.persistId && this.needsSave && !mergedOptions.forceRegenerate) {
-      debug('persistence', `Prompt persistence check: persistId=${this.persistId}, needsSave=${this.needsSave}`);
-      debug('persistence', `Auto-loading check during execute for prompt "${this.persistId}"`);
-
+    /* optional persistence load */
+    if (this.persistId && this.needsSave && !mergedOpts.forceRegenerate) {
+      debug('prompt', 'Attempting to load cached template: %s', this.persistId);
       try {
-        debug('persistence', `Attempting to load prompt "${this.persistId}" from storage`);
-        const existingPrompt = await store.load('prompt', this.persistId);
-        if (existingPrompt) {
-          // Update our segments and variables from storage
-          this.segments = existingPrompt.segments;
-          this.variables = existingPrompt.variables;
-          debug('persistence', `Loaded existing prompt "${this.persistId}" from storage - updated ${this.segments.length} segments`);
-          debug('persistence', `Template updated in place with loaded data`);
-          this.needsSave = false; // Don't need to save if we loaded existing prompt
+        const cached = await store.load('prompt', this.persistId);
+        if (cached) {
+          debug('prompt', 'Loaded cached template successfully');
+          this.segments = cached.segments;
+          this.variables = cached.variables;
+          this.needsSave = false;
         }
-      } catch (error) {
-        // If loading fails, we'll use the current prompt
-        debug('persistence', `No existing prompt "${this.persistId}" found or error loading it`);
+      } catch (_) {
+        debug('prompt', 'No cached template found or error loading it');
       }
-    } else if (mergedOptions.forceRegenerate && this.persistId) {
-      debug('persistence', `Skipping load for prompt "${this.persistId}" due to forceRegenerate=true`);
     }
 
-    // Render the prompt
-    const prompt = this.render(variables);
-
-    // Determine which model to use
-    let modelDef: ModelDefinition;
-
-    if (typeof mergedOptions.model === 'string') {
-      // Try to find model by alias
-      const resolvedModel = ModelRegistry.getModel(mergedOptions.model);
-
-      if (!resolvedModel) {
-        throw new Error(`Model alias not found: ${mergedOptions.model}`);
-      }
-
-      modelDef = resolvedModel;
-    } else if (mergedOptions.model) {
-      // Use the provided model definition
-      modelDef = mergedOptions.model;
-    } else {
-      // Default to OpenAI's GPT-3.5 Turbo
-      modelDef = {
-        provider: ModelProvider.OPENAI,
-        model: 'gpt-3.5-turbo',
-      };
-    }
-
-    debug('prompt', `Using model: ${modelDef.provider}/${modelDef.model}`);
-
-    // Get the adapter for this model
+    const promptText = this.render(vars);
+    debug('prompt', 'Rendered prompt for LLM: %s', promptText);
+    
+    const modelDef = resolveModel(mergedOpts.model);
+    debug('prompt', 'Using model: %s/%s', modelDef.provider, modelDef.model);
+    
     const adapter = ModelRegistry.getAdapter(modelDef);
-
     if (!adapter) {
-      throw new Error(`No adapter found for model: ${modelDef.provider}:${modelDef.model}`);
+      debug('prompt', 'No adapter found for model: %s/%s', modelDef.provider, modelDef.model);
+      throw new Error(`No adapter for model: ${modelDef.provider}:${modelDef.model}`);
     }
 
-    // Determine if we should use chat or completion based on provider and model
-    let response: string;
-
-    // For tests, we'll use chat for mock models
-    if (modelDef.provider === ModelProvider.MOCK ||
+    debug('prompt', 'Sending request to LLM');
+    const response =
+      modelDef.provider === ModelProvider.MOCK ||
       modelDef.provider === ModelProvider.ANTHROPIC ||
-      modelDef.model.includes('gpt-')) {
-      // Use chat interface
-      const messages = [
-        { role: 'user', content: prompt }
-      ];
+      modelDef.model.includes('gpt-')
+        ? await adapter.chat(buildMessages(promptText, mergedOpts, this._outputSchema), mergedOpts)
+        : await adapter.complete(promptText, mergedOpts);
 
-      // Add system message if provided
-      if (mergedOptions.system) {
-        messages.unshift({ role: 'system', content: mergedOptions.system });
-      }
+    debug('prompt', 'Raw response from LLM:\n%s', response);
 
-      debug('prompt', `Using chat interface with ${messages.length} messages`);
-      debug('prompt', `Messages: ${JSON.stringify(messages, null, 2)}`);
-
-      response = await adapter.chat(messages, mergedOptions);
-    } else {
-      debug('prompt', `Using completion interface`);
-
-      // Use completion interface
-      response = await adapter.complete(prompt, mergedOptions);
-    }
-
-    // Log the raw response
-    debug('prompt', "Raw response from model:");
-    debug('prompt', "```");
-    debug('prompt', response);
-    debug('prompt', "```");
-
-    // Format the response based on the expected return type
-    const formattedResponse = this.formatResponse(response);
-
-    // Log the formatted response
-    debug('prompt', "Formatted response:");
-    debug('prompt', "```json");
-    debug('prompt', typeof formattedResponse === 'string'
-      ? formattedResponse
-      : JSON.stringify(formattedResponse, null, 2));
-    debug('prompt', "```");
-
-    // Save the prompt if we have a persist ID and need to save
-    if (this.persistId && this.needsSave) {
+    let out: any = response;
+    if (this._outputSchema) {
+      debug('prompt', 'Processing response with output schema');
+      const maybe = extractJson(response);
+      debug('prompt', 'Extracted JSON from response: %o', maybe);
+      
       try {
-        // Use await instead of promise.catch for better error handling
-        await this.save(this.persistId);
-
-        // Only reset the flag after successful saving
-        this.needsSave = false;
+        out = this._outputSchema.parse(maybe ?? response);
+        debug('prompt', 'Schema validation successful');
       } catch (error) {
-        // Don't reset the needsSave flag on error, so we can try again later
-        return formattedResponse as unknown as R; // Return early to avoid resetting needsSave
+        debug('prompt', 'Schema validation failed: %o', error);
+        throw error;
       }
     }
 
-    return formattedResponse as unknown as R;
-  }
-
-  returns<R>(schema?: z.ZodType<R>): PromptTemplate<R> {
-    // If no schema is provided, try to infer one from the type parameter
-    const zodSchema = schema || inferSchema<R>();
-
-    // Generate an example from the schema
-    const example = generateJsonExampleFromSchema(zodSchema);
-
-    // Only append format information if we have a non-empty example
-    if (example && example !== '{}' && example !== '[]') {
-      // Add the format example as a string segment
-      this.segments.push(`\n\nYour response must be in this JSON format:\n${example}`);
-    }
-
-    // Modify the formatResponse method directly on this instance
-    this.formatResponse = (response: string): any => {
-      const extractedJson = extractJsonFromString(response);
-      if (extractedJson) {
-        try {
-          // Validate the extracted JSON against the schema
-          const validated = validateWithSchema(zodSchema, extractedJson, { silent: true });
-          if (validated) {
-            // Ensure a plain JavaScript object is returned if it was an object
-            if (typeof validated === 'object' && validated !== null) {
-              try {
-                return JSON.parse(JSON.stringify(validated)) as unknown as R;
-              } catch (e) {
-                debug('template', 'Failed to re-parse validated object, returning as is:', e);
-                return validated as unknown as R; // Fallback if re-parsing fails (should be rare)
-              }
-            }
-            return validated as unknown as R;
-          }
-        } catch (e) {
-          console.warn('Response validation failed:', e);
-        }
-        // If validation fails, but JSON was extracted, return the raw extracted JSON
-        // (which might be an object or an array if parsing was successful)
-        if (typeof extractedJson === 'object' && extractedJson !== null) {
-            try {
-                return JSON.parse(JSON.stringify(extractedJson)); // Sanitize this too
-            } catch (e) {
-                debug('template', 'Failed to re-parse extractedJson object, returning as is:', e);
-                return extractedJson;
-            }
-        }
-        return extractedJson;
+    /* optional persistence save */
+    if (this.persistId && this.needsSave) {
+      debug('prompt', 'Saving template to storage: %s', this.persistId);
+      try {
+        await this.save(this.persistId);
+        this.needsSave = false;
+        debug('prompt', 'Template saved successfully');
+      } catch (error) {
+        debug('prompt', 'Error saving template: %o', error);
       }
-      return response as unknown as any; // Return original string if no JSON was extracted
-    };
-
-    // Return this instance with the updated methods
-    return this as unknown as PromptTemplate<R>;
+    }
+    
+    debug('prompt', 'Template execution complete with result type: %s', typeof out);
+    return out as unknown as R;
   }
 
-  formatResponse(response: string): T {
-    // Default implementation just returns the string
-    return response as unknown as T;
-  }
+  /* ----------------------- schema builders ---------------------- */
 
-  prefix(text: string): PromptTemplate<T> {
-    // Modify the current template by adding the prefix text
-    this.segments.unshift(text);
-    return this as unknown as PromptTemplate<T>;
-  }
+  inputs<S extends z.ZodRawShape | z.ZodObject<any, any, any>>(
+    schemaOrShape: S
+  ): PromptTemplate<TOut, z.infer<S extends z.ZodRawShape ? z.ZodObject<S> : S>> {
+    let finalSchema: z.ZodTypeAny;
+    let rawShapeForHint: z.ZodRawShape | undefined = undefined;
 
-  suffix(text: string): PromptTemplate<T> {
-    // Modify the current template by adding the suffix text
-    this.segments.push(text);
-    return this as unknown as PromptTemplate<T>;
-  }
+    if (schemaOrShape instanceof z.ZodObject) {
+      debug('prompt', 'Setting input schema with provided ZodObject. Shape: %o', Object.keys(schemaOrShape.shape));
+      finalSchema = schemaOrShape;
+      rawShapeForHint = schemaOrShape.shape;
+    } else {
+      debug('prompt', 'Setting input schema with raw shape: %o', Object.keys(schemaOrShape));
+      finalSchema = z.object(schemaOrShape as z.ZodRawShape);
+      rawShapeForHint = schemaOrShape as z.ZodRawShape;
+    }
+    this._inputSchema = finalSchema;
 
-  /**
-   * Create a deep copy of this template.
-   * Unlike other methods which modify the instance in place,
-   * this method intentionally returns a new instance without persistence properties.
-   * 
-   * @returns A new template instance with the same segments and variables
-   */
-  clone(): PromptTemplate<T> {
-    // Create a deep copy of the template
-    const newTemplate = new PromptTemplateImpl<T>([...this.segments], [...this.variables]);
-
-    // Return a callable version
-    return makeTemplateCallable<T>(newTemplate);
-  }
-
-  train(examples: Array<{ text: any, output: T }>): PromptTemplate<T> {
-    // Format the examples text
-    const examplesText = examples.map(ex => {
-      const input = typeof ex.text === 'string' ? ex.text : JSON.stringify(ex.text, null, 2);
-      const output = typeof ex.output === 'string' ? ex.output : JSON.stringify(ex.output, null, 2);
-      return `Input: ${input}\nOutput: ${output}\n---\n`;
-    }).join('\n');
-
-    // Create the prefix text
-    const prefixText = `Examples:\n${examplesText}\n\nNow, process the following input:`;
-
-    // Add the prefix to this template
-    return this.prefix(prefixText);
-  }
-
-  using(model: string | ModelDefinition): PromptTemplate<T> {
-    // Store the original execute method
-    const originalExecute = this.execute;
-
-    // Replace the execute method on this instance
-    this.execute = async function <R = T>(
-      variables: PromptVariables,
-      options: PromptExecutionOptions = {}
-    ): Promise<R> {
-      // Override the model in options
-      const newOptions = {
-        ...options,
-        model
-      };
-
-      // Call the original execute method with the new options
-      return originalExecute.call(this, variables, newOptions) as R;
-    };
-
-    return this as unknown as PromptTemplate<T>;
-  }
-
-  /**
-   * Explicitly save this template to storage immediately.
-   * Unlike persist(), this method performs the actual storage operation right away.
-   * 
-   * @param name The name to save the template under
-   * @returns This template instance for method chaining
-   */
-  async save(name: string): Promise<PromptTemplate<T>> {
+    // ---- Add input schema hint for the LLM ----
     try {
-      // Add debug information to track prompt persistence
-      debug('persistence', `save() called for prompt "${name}"`);
-      debug('persistence', `Saving prompt "${name}" to storage`);
+      let instruction: string | null = null;
+      let example: string | null = null;
 
-      // Prepare data for storage
-      const data = {
-        segments: this.segments,
-        variables: this.variables
-      };
+      if (finalSchema instanceof z.ZodObject && rawShapeForHint) {
+        example = appendSchemaTypeHints(rawShapeForHint); // rawShapeForHint is already the shape for ZodObject
+        instruction = `IMPORTANT: The input you receive will be a JSON object matching this structure:\n${example}\n\n`;
+        debug('prompt', 'Generated INPUT (object) schema example for LLM prompt: %s', example);
+      } else if (finalSchema instanceof z.ZodArray && finalSchema.element instanceof z.ZodObject) {
+        const itemShape = (finalSchema.element as z.ZodObject<any>).shape;
+        example = appendSchemaTypeHints(itemShape);
+        instruction = `IMPORTANT: The input you receive will be a JSON array, where each element matches this object structure:\n${example}\n\n`;
+        debug('prompt', 'Generated INPUT (array of objects) schema example for LLM prompt: %s', example);
+      } else if (finalSchema instanceof z.ZodArray) {
+        let elementTypeName = finalSchema.element._def?.typeName;
+        if (elementTypeName) {
+            instruction = `IMPORTANT: The input you receive will be a JSON array of ${elementTypeName.replace('Zod', '').toLowerCase()}s.\n\n`;
+            debug('prompt', 'Generated INPUT (array of primitives) schema hint for LLM prompt: %s', instruction);
+        } else {
+            debug('prompt', 'Could not generate detailed INPUT schema hint for this ZodArray structure for LLM prompt.');
+        }
+      } else {
+        debug('prompt', `Could not generate detailed INPUT schema hint for top-level schema type for LLM prompt: ${finalSchema._def?.typeName}`);
+      }
 
-      debug('persistence', `Prompt data prepared, calling store.save('prompt', '${name}')`);
-
-      // Save to storage
-      await store.save('prompt', name, data);
-
-      debug('persistence', `store.save completed for prompt "${name}"`);
-      debug('persistence', `Prompt "${name}" successfully saved to storage`);
-
-      // Return this for chaining instead of creating a new object
-      return this as unknown as PromptTemplate<T>;
-    } catch (error) {
-      // Add error handling
-      debug('persistence', `Failed to save prompt "${name}":`, error);
-      console.error(`Error saving prompt "${name}":`, error);
-      throw error; // Re-throw to allow caller to handle
+      if (instruction) {
+        // Prepend to segments so it appears before the main prompt text
+        this.segments.unshift(instruction); 
+        debug('prompt', 'Prepended input JSON instructions to prompt segments.');
+      }
+    } catch (err) {
+      debug('prompt', 'Failed to append input schema type hints to prompt segments: %o', err);
     }
+    // ---- End of input schema hint ----
+
+    return this as unknown as PromptTemplate<TOut, z.infer<S extends z.ZodRawShape ? z.ZodObject<S> : S>>;
+  }
+
+  outputs<S extends z.ZodRawShape | z.ZodObject<any, any, any>>(
+    schemaOrShape: S
+  ): PromptTemplate<z.infer<S extends z.ZodRawShape ? z.ZodObject<S> : S>, TIn> {
+    let finalSchema: z.ZodObject<any, any, any>;
+    let rawShapeForHint: z.ZodRawShape;
+
+    if (schemaOrShape instanceof z.ZodObject) {
+      // It's already a ZodObject
+      debug('prompt', 'Setting output schema with provided ZodObject. Shape: %o', Object.keys(schemaOrShape.shape));
+      finalSchema = schemaOrShape;
+      rawShapeForHint = schemaOrShape.shape; // Get the raw shape for appendSchemaTypeHints
+    } else {
+      // It's a ZodRawShape
+      debug('prompt', 'Setting output schema with raw shape: %o', Object.keys(schemaOrShape));
+      finalSchema = z.object(schemaOrShape as z.ZodRawShape); // Cast needed
+      rawShapeForHint = schemaOrShape as z.ZodRawShape; // Use the raw shape directly for hints
+    }
+    
+    this._outputSchema = finalSchema;
+    
+    // Generate a simple example of the expected JSON structure
+    const example = appendSchemaTypeHints(rawShapeForHint);
+    debug('prompt', 'Generated schema example for LLM: %s', example);
+    
+    // Add instructions to the prompt for the LLM to return JSON
+    this.segments.push(`\n\nIMPORTANT: You must respond with a valid JSON object that matches this structure:\n${example}\n`);
+    debug('prompt', 'Added JSON format instructions to prompt');
+    
+    return this as unknown as PromptTemplate<z.infer<S extends z.ZodRawShape ? z.ZodObject<S> : S>, TIn>;
+  }
+  /* ----------------------- convenience builders ----------------- */
+
+  prefix(txt: string): PromptTemplate<TOut, TIn> {
+    this.segments.unshift(txt);
+    return this as unknown as PromptTemplate<TOut, TIn>;
+  }
+
+  suffix(txt: string): PromptTemplate<TOut, TIn> {
+    this.segments.push(txt);
+    return this as unknown as PromptTemplate<TOut, TIn>;
+  }
+
+  clone(): PromptTemplate<TOut, TIn> {
+    const copy = new PromptTemplateImpl<TOut, TIn>([...this.segments], [...this.variables]);
+    copy._inputSchema = this._inputSchema;         // Copy the input schema
+    copy._outputSchema = this._outputSchema;       // Copy the output schema
+    copy._executionOptions = { ...this._executionOptions }; // Shallow copy execution options
+    
+    // Also copy persistence-related fields if they are part of the state
+    if (this.hasOwnProperty('persistId')) { // Or check if this.persistId is not undefined
+        (copy as any).persistId = this.persistId;
+    }
+    if (this.hasOwnProperty('needsSave')) { // Or check if this.needsSave is not undefined
+        (copy as any).needsSave = this.needsSave;
+    }
+    return makeCallable(copy);
+  }
+
+  using(model: string | ModelDefinition): PromptTemplate<TOut, TIn> {
+    const originalExecute = this.execute;
+    this.execute = (vars, o = {}) =>
+      originalExecute.call(this, vars, { ...o, model }) as any;
+    return this as unknown as PromptTemplate<TOut, TIn>;
+  }
+
+  async save(name: string): Promise<PromptTemplate<TOut, TIn>> {
+    await store.save('prompt', name, { segments: this.segments, variables: this.variables });
+    return this as unknown as PromptTemplate<TOut, TIn>;
   }
 }
 
-/**
- * Helper function to create a callable proxy around a template object
- */
-function makeTemplateCallable<T>(template: TemplateObject<T>): PromptTemplate<T> {
-  // If this template is already callable (has our proxy), return it as is
-  if (template[CALLABLE_MARKER]) {
-    return template as unknown as PromptTemplate<T>;
-  }
+/* ------------------------------------------------------------------ */
+/* factory & proxy                                                    */
+/* ------------------------------------------------------------------ */
 
-  // Create a base function that will be our callable template
-  const baseFunction = async function (...args: any[]) {
-    const [variables = {}, options = {}] = args;
-    const mergedOptions = { ...(template._executionOptions || {}), ...options };
-    let result = await template.execute(variables, mergedOptions);
+export function createTemplate<TOut, TIn = PromptVariables>(
+  strings: TemplateStringsArray,
+  values: any[],
+): PromptTemplate<TOut, TIn> {
+  const { segments, variables } = parseTemplate(strings, values);
+  const tmpl = new PromptTemplateImpl<TOut, TIn>(segments, variables);
+  return makeCallable(tmpl);
+}
 
-    // If the result is a JSON-looking string, attempt to parse it so flows receive objects
-    if (typeof result === 'string') {
-      const maybeObj = extractJsonFromString(result);
-      if (maybeObj && typeof maybeObj === 'object') {
-        result = maybeObj;
-      }
+/* ------------------------------------------------------------------ */
+/* restore factory (for loading from storage)                          */
+/* ------------------------------------------------------------------ */
+
+export function restoreTemplate<TOut, TIn = PromptVariables>(
+  segments: PromptSegment[],
+  variables: PromptVariable[] = [],
+): PromptTemplate<TOut, TIn> {
+  const tmpl = new PromptTemplateImpl<TOut, TIn>(segments, variables);
+  return makeCallable(tmpl);
+}
+
+/* ------------------------------------------------------------------ */
+/* proxy helper                                                       */
+/* ------------------------------------------------------------------ */
+
+
+function makeCallable<TOut, TIn>(
+  // TemplateObject is the interface for PromptTemplateImpl
+  tmpl: TemplateObject<TOut, TIn>, 
+  // PromptTemplate is the public, callable interface
+): PromptTemplate<TOut, TIn> {      
+  if (tmpl[CALLABLE]) return tmpl as any; // Already callable
+
+  // This is the function that will be returned, making the template callable
+  const fnCallable: any = async (vars: any = {}, opts: PromptExecutionOptions = {}) => {
+    // Default action: execute the template
+    if (typeof tmpl.execute !== 'function') {
+        throw new Error("Internal error: TemplateObject does not have an execute method.");
     }
+    const res = await tmpl.execute(vars, opts);
 
-    // Ensure plain object shell like programs do
-    if (result && typeof result === 'object' && !Array.isArray(result) && typeof result !== 'function') {
-      return Object.assign(Object.create(null), result);
+    // Post-processing (same as your existing logic)
+    if (typeof res === 'string') {
+      const parsed = extractJson(res);
+      if (parsed && typeof parsed === 'object') return parsed;
     }
-    return result;
+    if (res && typeof res === 'object' && !Array.isArray(res))
+      return Object.assign(Object.create(null), res);
+    return res;
   };
 
-  // Pre-wrap all methods that return templates
-  const methodsThatReturnTemplate = [
-    'returns', 'prefix', 'suffix', 'clone', 'train',
-    'using', 'options', 'persist', 'save'
+  // 1. Expose known direct properties (segments, variables) via getters
+  //    This ensures they are read from the underlying 'tmpl' instance.
+  Object.defineProperty(fnCallable, 'segments', {
+    get: () => tmpl.segments,
+    enumerable: true,
+    configurable: false, // typically false for interface properties
+  });
+  Object.defineProperty(fnCallable, 'variables', {
+    get: () => tmpl.variables,
+    enumerable: true,
+    configurable: false,
+  });
+  // Expose persistId and needsSave if they are part of PromptTemplate interface
+  if ('persistId' in tmpl) {
+    Object.defineProperty(fnCallable, 'persistId', {
+      get: () => tmpl.persistId,
+      set: (value) => { (tmpl as any).persistId = value; }, // if mutable
+      enumerable: true,
+    });
+  }
+  if ('needsSave' in tmpl) {
+     Object.defineProperty(fnCallable, 'needsSave', {
+      get: () => tmpl.needsSave,
+      set: (value) => { (tmpl as any).needsSave = value; }, // if mutable
+      enumerable: true,
+    });
+  }
+
+
+  // 2. Expose known methods by binding them to the 'tmpl' instance
+  //    This ensures 'this' is correct when these methods are called on fnCallable.
+  const methodsToBind: (keyof TemplateObject<TOut, TIn>)[] = [
+    'render', 
+    'execute', // execute is also the default call, but can be called directly
+    'inputs', 
+    'outputs', 
+    'prefix', 
+    'suffix', 
+    'clone',
+    // 'train', // Add if part of your TemplateObject and PromptTemplate interface
+    'using', 
+    'options', 
+    'persist', 
+    'save',
+    // 'formatResponse' // Add if part of your TemplateObject and PromptTemplate interface
   ];
 
-  const wrappedMethods: Record<string, Function> = {};
-
-  methodsThatReturnTemplate.forEach(methodName => {
-    const originalMethod = template[methodName];
-    if (typeof originalMethod === 'function') {
-      wrappedMethods[methodName] = function (...args: any[]) {
-        // Call the original method on the template object to ensure state is preserved
-        const result = originalMethod.apply(template, args);
-
-        // Special handling for persist and save
-        if (methodName === 'persist' || methodName === 'save') {
-          return proxy; // Return the proxy itself for chaining
+  methodsToBind.forEach(methodName => {
+    const method = tmpl[methodName];
+    if (typeof method === 'function') {
+      // Important: The result of chainable methods (inputs, outputs, etc.)
+      // should also be wrapped by makeCallable if they return a new template instance.
+      fnCallable[methodName] = (...args: any[]) => {
+        const result = (method as Function).apply(tmpl, args);
+        // If the method returns a new template-like object (identified by having 'segments' or being a new builder),
+        // then this result also needs to be made callable.
+        // This matches your existing chainable logic.
+        if (result && typeof result === 'object' && 'segments' in result && typeof result.execute === 'function') {
+          return makeCallable(result as TemplateObject<any, any>);
         }
-
-        // For other methods, ensure the result is callable if it's a template
-        if (result && typeof result === 'object' && 'segments' in result) {
-          return makeTemplateCallable(result as TemplateObject<any>);
-        }
-
-        return result;
+        return result; // For methods like save (Promise) or render (string)
       };
     }
   });
-
-  // Copy properties, with special handling for wrapped methods
-  Object.getOwnPropertyNames(template).forEach(prop => {
-    if (prop !== 'constructor') {
-      if (prop in wrappedMethods) {
-        (baseFunction as any)[prop] = wrappedMethods[prop];
-      } else {
-        (baseFunction as any)[prop] = (template as any)[prop];
-      }
-    }
-  });
-
-  // Create the proxy
-  const proxy = new Proxy(baseFunction, {
-    get(target, prop, receiver) {
-      // Special handling for Symbol.hasInstance
-      if (prop === Symbol.hasInstance) {
-        return Function.prototype[Symbol.hasInstance].bind(baseFunction);
-      }
-
-      // Special handling for callable marker
-      if (prop === CALLABLE_MARKER) {
-        return true;
-      }
-
-      // Forward property access to the template object if the property doesn't exist on the function
-      if (!(prop in target) && prop in template) {
-        return Reflect.get(template, prop, receiver);
-      }
-
-      return Reflect.get(target, prop, receiver);
-    },
-    set(target, prop, value, receiver) {
-      // Set the property on both the function and the template object
-      // This ensures properties like persistId are properly synchronized
-      if (prop in template) {
-        Reflect.set(template, prop, value, receiver);
-      }
-      return Reflect.set(target, prop, value, receiver);
-    }
-  });
-
-  // Mark the proxy as callable
-  (proxy as any)[CALLABLE_MARKER] = true;
-
-  return proxy as unknown as PromptTemplate<T>;
+  
+  // Mark as callable (your existing logic)
+  fnCallable[CALLABLE] = true;
+  return fnCallable as PromptTemplate<TOut, TIn>;
 }
 
-/**
- * Create a new template with custom props from a base template
- */
-function createTemplateFromBase<T>(base: TemplateObject<any>, overrides: Partial<TemplateObject<T>>): PromptTemplate<T> {
-  // Create a new template with the base segments and variables
-  const newTemplate = new PromptTemplateImpl<T>([...base.segments], [...base.variables]);
+/* ------------------------------------------------------------------ */
+/* helpers                                                            */
+/* ------------------------------------------------------------------ */
 
-  // Apply overrides
-  Object.entries(overrides).forEach(([key, value]) => {
-    if (key !== 'segments' && key !== 'variables') {
-      (newTemplate as any)[key] = value;
-    }
-  });
-
-  // Return a callable version
-  return makeTemplateCallable<T>(newTemplate);
+function resolveModel(m?: string | ModelDefinition): ModelDefinition {
+  if (!m)
+    return { provider: ModelProvider.OPENAI, model: 'gpt-3.5-turbo' };
+  if (typeof m === 'string') {
+    const found = ModelRegistry.getModel(m);
+    if (!found) throw new Error(`Model alias not found: ${m}`);
+    return found;
+  }
+  return m;
 }
 
-/**
- * Create a new prompt template
- */
-export function createTemplate<T = any>(
-  strings: TemplateStringsArray,
-  values: any[]
-): PromptTemplate<T> {
-  const { segments, variables } = parseTemplate(strings, values);
+function buildMessages(prompt: string, opts: PromptExecutionOptions, outputSchema?: z.ZodType<any>) {
+  const msgs = [{ role: 'user', content: prompt }];
+  let systemMessageContent = opts.system;
 
-  // Create a new template instance using our PromptTemplateImpl class
-  const template = new PromptTemplateImpl<T>(segments, variables);
-
-  // Create a callable proxy from the template
-  return makeTemplateCallable<T>(template);
-}
-
-/**
- * Extract JSON from a string, handling various formats
- */
-function extractJsonFromString(text: string): any | null {
-  // Clean the input text
-  let cleanedText = text.trim();
-
-  // 1) Strip Markdown code-block fences if present
-  const codeBlockMatch = cleanedText.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  if (codeBlockMatch) {
-    cleanedText = codeBlockMatch[1].trim();
+  if (!systemMessageContent && outputSchema) {
+    systemMessageContent = "You are an AI assistant. Fulfill the user's request directly. If the user asks for a specific JSON output structure, you MUST provide your answer in that exact JSON format and nothing else. Do not provide explanations, code, or conversational filler if a JSON output structure is specified.";
+    debug('prompt', 'Injecting default system message for structured JSON output: "%s"', systemMessageContent);
   }
 
-  // 2) If the entire thing is quoted ("{ ... }"), un-quote it first
-  if (
-    (cleanedText.startsWith('"') && cleanedText.endsWith('"')) ||
-    (cleanedText.startsWith("'") && cleanedText.endsWith("'"))
-  ) {
-    cleanedText = cleanedText.slice(1, -1);
+  if (systemMessageContent) msgs.unshift({ role: 'system', content: systemMessageContent });
+  return msgs;
+}
 
-    // Try to parse immediately (may still contain escaped quotes)
+
+
+function extractJson(text: string): any | null {
+  debug('prompt', 'Attempting to extract JSON from text (%d chars)', text.length);
+  let t = text.trim();
+  
+  // Check for code blocks
+  const block = t.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (block) {
+    debug('prompt', 'Found code block, extracting content');
+    t = block[1].trim();
+  }
+  
+  // Try to parse directly quoted strings
+  if ((t.startsWith('"') && t.endsWith('"')) || (t.startsWith("'") && t.endsWith("'"))) {
+    debug('prompt', 'Found quoted string, attempting to parse');
     try {
-      return JSON.parse(cleanedText);
-    } catch {
-      // If it failed, try removing escape characters and parse again
+      const parsed = JSON.parse(t.slice(1, -1));
+      debug('prompt', 'Successfully parsed quoted JSON string');
+      return parsed;
+    } catch (error) {
+      debug('prompt', 'Failed to parse quoted string, trying with escape replacements');
       try {
-        return JSON.parse(cleanedText.replace(/\\"/g, '"'));
+        const parsed = JSON.parse(t.slice(1, -1).replace(/\\"/g, '"'));
+        debug('prompt', 'Successfully parsed quoted JSON string with escape replacements');
+        return parsed;
       } catch {
-        // continue to other fallbacks
+        debug('prompt', 'Failed to parse quoted string with escape replacements');
       }
     }
   }
-
-  // Existing direct-parse attempt
-  if (
-    (cleanedText.startsWith('{') && cleanedText.endsWith('}')) ||
-    (cleanedText.startsWith('[') && cleanedText.endsWith(']'))
-  ) {
+  
+  // Try to parse JSON objects/arrays directly
+  if ((t.startsWith('{') && t.endsWith('}')) || (t.startsWith('[') && t.endsWith(']'))) {
+    debug('prompt', 'Found JSON object/array, attempting to parse');
     try {
-      return JSON.parse(cleanedText);
+      const parsed = JSON.parse(t);
+      debug('prompt', 'Successfully parsed JSON object/array');
+      return parsed;
     } catch {
-      // continue to fallback logic
+      debug('prompt', 'Failed to parse JSON object/array');
     }
   }
-
-  // Existing brace/array regex extraction (kept as-is)
-  const jsonMatch = cleanedText.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
-  if (jsonMatch) {
+  
+  // Try to find and extract a JSON object/array within the text
+  const m = t.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
+  if (m) {
+    debug('prompt', 'Found JSON-like pattern in text, attempting to parse');
     try {
-      return JSON.parse(jsonMatch[0]);
+      const parsed = JSON.parse(m[0]);
+      debug('prompt', 'Successfully parsed extracted JSON pattern');
+      return parsed;
     } catch {
-      // attempt to recover common issues: unquoted keys, single quotes
+      debug('prompt', 'Failed to parse extracted pattern, trying with field name fixing');
       try {
-        const fixed = jsonMatch[0]
+        const fixed = m[0]
           .replace(/(['"])?([a-zA-Z0-9_]+)(['"])?:/g, '"$2":')
           .replace(/'/g, '"');
-        return JSON.parse(fixed);
+        const parsed = JSON.parse(fixed);
+        debug('prompt', 'Successfully parsed JSON with field name fixes');
+        return parsed;
       } catch {
-        return null;
+        debug('prompt', 'Failed to parse JSON even with field name fixes');
       }
     }
   }
-
-  return null; // give up – caller will treat as plain string
+  
+  debug('prompt', 'Could not extract JSON from text');
+  return null;
 }

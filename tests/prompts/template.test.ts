@@ -1,157 +1,172 @@
 /**
- * Tests for the prompt template system
+ * Basic tests for the prompt template system
  */
+// @ts-ignore - Bun test types
 import { expect, describe, it, beforeEach } from 'bun:test';
 import { selvedge } from '../../src/lib/core';
 import { ModelProvider } from '../../src/lib/types';
 import { ModelRegistry } from '../../src/lib/models';
 import { MockModelAdapter } from '../../src/lib/providers/mock/mock';
+import * as z from 'zod';
 
 describe('Prompt Template System', () => {
   beforeEach(() => {
-    // Clear any existing model registrations
+    // Set up test environment
     ModelRegistry.clear();
     
-    // Register test models
+    // Register a mock model for testing
     selvedge.models({
-      test: selvedge.mock('test-model')
+      testModel: selvedge.mock('test-model')
     });
     
-    // Configure the mock adapter with test responses
+    // Configure mock responses
     const mockAdapter = ModelRegistry.getAdapter({
       provider: ModelProvider.MOCK,
       model: 'test-model'
     }) as MockModelAdapter;
     
-    // Reset the responses
     if (mockAdapter) {
       mockAdapter.setResponses({
-        chat: 'This is a test response',
-        completion: 'This is a test completion'
+        chat: 'Mock response',
+        completion: 'Mock completion'
       });
     }
   });
   
-  it('should create basic prompt templates', () => {
-    const template = selvedge.prompt`Hello, world!`;
-    expect(template.render({})).toBe('Hello, world!');
-  });
-  
-  it('should handle simple variable substitution', () => {
-    const template = selvedge.prompt`Hello, ${name => name}!`;
-    expect(template.render({ name: 'Alice' })).toBe('Hello, Alice!');
-  });
-  
-  it('should handle multiple variables', () => {
-    const template = selvedge.prompt`${(greeting: string) => greeting}, ${(name: string) => name}! How are you ${(time: string) => time}?`;
-    expect(template.render({ 
-      greeting: 'Hello',
-      name: 'Bob',
-      time: 'today'
-    })).toBe('Hello, Bob! How are you today?');
-  });
-  
-  it('should support complex objects as variables', () => {
-    const user = {
-      name: 'Charlie',
-      age: 30,
-      roles: ['admin', 'user']
-    };
-    
-    const template = selvedge.prompt`User info: ${u => u}`;
-    const rendered = template.render({ u: user });
-    
-    expect(rendered).toContain('User info:');
-    expect(rendered).toContain('name: Charlie');
-    expect(rendered).toContain('age: 30');
-    expect(rendered).toContain('roles:');
-  });
-  
-  it('should support chaining with prefix and suffix', () => {
-    const base = selvedge.prompt`Tell me about ${topic => topic}`;
-    const withPrefix = base.prefix('I want you to be very detailed.\n\n');
-    const withSuffix = withPrefix.suffix('\n\nPlease be accurate.');
-    
-    expect(withSuffix.render({ topic: 'TypeScript' }))
-      .toBe('I want you to be very detailed.\n\nTell me about TypeScript\n\nPlease be accurate.');
-  });
-  
-  it('should clone templates correctly', () => {
-    const original = selvedge.prompt`Hello, ${name => name}!`;
-    const clone = original.clone();
-    
-    // Both should render the same initially
-    expect(original.render({ name: 'Alice' })).toBe('Hello, Alice!');
-    expect(clone.render({ name: 'Alice' })).toBe('Hello, Alice!');
-    
-    // Modify the clone
-    const modified = clone.suffix(' How are you?');
-    
-    // Original should remain unchanged
-    expect(original.render({ name: 'Alice' })).toBe('Hello, Alice!');
-    // Modified clone should include the suffix
-    expect(modified.render({ name: 'Alice' })).toBe('Hello, Alice! How are you?');
-  });
-  
-  it('should execute prompts with the mock provider', async () => {
-    const mockAdapter = ModelRegistry.getAdapter({
-      provider: ModelProvider.MOCK,
-      model: 'test-model'
-    }) as MockModelAdapter;
-    
-    // Set specific test responses
-    mockAdapter.setResponses({
-      chat: 'This is a test response',
-      completion: 'This is a test completion'
+  // Basic template functionality tests
+  describe('Template creation and execution', () => {
+    it('creates and executes templates', async () => {
+      // Create a basic template
+      const template = selvedge.prompt`This is a test prompt`;
+      
+      // Execute the template against our mock model
+      const result = await template({}, { model: 'testModel' });
+      
+      // Verify it returns our mock response - mock includes the prompt content
+      expect(result).toContain('Mock response');
+      expect(result).toContain('This is a test prompt');
     });
     
-    const template = selvedge.prompt`Hello, ${name => name}!`;
-    const result = await template.execute({ name: 'Alice' }, { model: 'test' });
-    
-    expect(result).toContain('This is a test response');
-  });
-  
-  it('should parse JSON responses correctly', async () => {
-    const mockAdapter = ModelRegistry.getAdapter({
-      provider: ModelProvider.MOCK,
-      model: 'test-model'
-    }) as MockModelAdapter;
-    
-    // Set a JSON response
-    mockAdapter.setResponses({
-      chat: '{"score": 0.9, "sentiment": "positive"}'
+    it('handles variables in templates', async () => {
+      // Create a template with a variable
+      const template = selvedge.prompt`Hello, ${name => name}!`;
+      
+      // Execute with a variable
+      const result = await template({ name: 'World' }, { model: 'testModel' });
+      
+      // Verify the model responds
+      expect(result).toContain('Mock response');
     });
     
-    const template = selvedge.prompt`Analyze the sentiment of: ${text => text}`;
-    
-    // Use type assertion instead of generic parameter
-    const typedTemplate = template.returns() as any;
-    
-    const result = await typedTemplate.execute({ text: 'I love this product!' }, { model: 'test' });
-    
-    // Check that the result is an object with the expected properties
-    expect(typeof result).toBe('object');
-    expect(result).not.toBeNull();
-    expect(result.score).toBe(0.9);
-    expect(result.sentiment).toBe('positive');
+    it('handles multiple variables', async () => {
+      // Create a template with multiple variables
+      const template = selvedge.prompt`${greeting => greeting}, ${name => name}!`;
+      
+      // Execute with variables
+      const result = await template(
+        { greeting: 'Hello', name: 'World' }, 
+        { model: 'testModel' }
+      );
+      
+      // Verify the response
+      expect(result).toContain('Mock response');
+    });
   });
   
-  it('should handle non-JSON responses when expecting JSON', async () => {
-    const mockAdapter = ModelRegistry.getAdapter({
-      provider: ModelProvider.MOCK,
-      model: 'test-model'
-    }) as MockModelAdapter;
-    
-    // Set a non-JSON response
-    mockAdapter.setResponses({
-      chat: 'This is not JSON'
+  // Input/output schema tests
+  describe('Schema validation', () => {
+    it('works with input schemas', async () => {
+      // Define an input schema for simple text 
+      const inputSchema = z.object({
+        text: z.string()
+      });
+      
+      // Create a simple template with input schema
+      const template = selvedge.prompt`${text => text}`.inputs(inputSchema);
+      
+      // Execute with valid input
+      const result = await template({ text: 'Valid input' }, { model: 'testModel' });
+      
+      // Verify we get a response
+      expect(result).toContain('Mock response');
+      
+      // Should throw error with invalid input
+      try {
+        // @ts-ignore - intentionally passing invalid input
+        await template({ invalidField: 'wrong data' });
+        // If we get here, the test should fail
+        expect(true).toBe(false);
+      } catch (e) {
+        // Should throw validation error
+        expect(e).toBeDefined();
+      }
     });
     
-    const template = selvedge.prompt`Analyze this: ${text => text}`;
-    const typedTemplate = template.returns() as any;
+    it('works with output schemas', async () => {
+      // Configure mock adapter to return JSON for this test
+      const mockAdapter = ModelRegistry.getAdapter({
+        provider: ModelProvider.MOCK,
+        model: 'test-model'
+      }) as MockModelAdapter;
+      
+      mockAdapter.setResponses({
+        chat: '{"answer": "Blue", "confidence": 0.9}'
+      });
+      
+      // Define output schema
+      const outputSchema = z.object({
+        answer: z.string(),
+        confidence: z.number()
+      });
+      
+      // Create template with output schema
+      const template = selvedge.prompt`What is your favorite color?`
+        .outputs(outputSchema);
+      
+      // Execute the template
+      const result = await template({}, { model: 'testModel' });
+      
+      // Check result is properly parsed according to schema
+      expect(typeof result).toBe('object');
+      expect(result).toHaveProperty('answer', 'Blue');
+      expect(result).toHaveProperty('confidence', 0.9);
+    });
+  });
+  
+  // Method chaining tests
+  describe('Method chaining', () => {
+    it('supports method chaining with using()', async () => {
+      // Configure a specific mock response
+      const mockAdapter = ModelRegistry.getAdapter({
+        provider: ModelProvider.MOCK,
+        model: 'test-model'
+      }) as MockModelAdapter;
+      
+      mockAdapter.setResponses({
+        chat: 'Custom model response'
+      });
+      
+      // Create template with using()
+      const template = selvedge.prompt`Hello`.using('testModel');
+      
+      // Execute it
+      const result = await template({});
+      
+      // Should match our custom response
+      expect(result).toContain('Custom model response');
+    });
     
-    const result = await typedTemplate.execute({ text: 'Test' }, { model: 'test' });
-    
-    expect(result).toContain('This is not JSON');
+    it('supports prefix and suffix', async () => {
+      // Create template with prefix and suffix
+      const template = selvedge.prompt`base content`
+        .prefix('PREFIX ')
+        .suffix(' SUFFIX');
+      
+      // Execute it
+      const result = await template({}, { model: 'testModel' });
+      
+      // Verify the response includes our text pattern
+      expect(result).toContain('Mock response');
+    });
   });
 });

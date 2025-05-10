@@ -18,6 +18,7 @@ const debugConfig: DebugConfig = {
     persistence: false,
     llm: false,
     core: false,
+    flow: false,
     all: false
   }
 };

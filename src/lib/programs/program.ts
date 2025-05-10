@@ -12,7 +12,9 @@ import { debug } from '../utils/debug';
 import * as ts from 'typescript';
 import * as vm from 'vm';
 import { BuilderBase } from '../shared/builder-base';
-import { PromptTemplate } from '@prompts/types';
+import { PromptTemplate } from '../prompts/types';
+import * as z from 'zod';
+import { appendSchemaTypeHints } from '../schema';
 
 // --- Utility: TypeScript code evaluation ---
 function evaluateTypeScript(code: string): any {
@@ -133,10 +135,13 @@ function extractCodeFromResponse(response: string): string {
 }
 
 // --- Main ProgramBuilder Implementation ---
-class ProgramBuilderImpl<T> extends BuilderBase<ProgramExecutionOptions> {
-  template: PromptTemplate<T>;
+class ProgramBuilderImpl<TOut = any, TIn = ProgramVariables> extends BuilderBase<ProgramExecutionOptions> {
+  template: PromptTemplate<TOut>;
   exampleList: ProgramExample[];
   generatedCode: string | null;
+  /** Optional Zod schemas for runtime validation */
+  _inputSchema?: z.ZodTypeAny;
+  _outputSchema?: z.ZodTypeAny;
 
   constructor(strings: TemplateStringsArray, values: any[]) {
     super();
@@ -147,40 +152,21 @@ class ProgramBuilderImpl<T> extends BuilderBase<ProgramExecutionOptions> {
   }
 
   // Fluent API: options
-  options(opts: ProgramExecutionOptions): ProgramBuilder<T> {
+  options(opts: ProgramExecutionOptions): ProgramBuilder<TOut, TIn> {
     const copy = this._clone();
     copy._executionOptions = { ...this._executionOptions, ...opts };
     return makeProgramCallable(copy);
   }
 
-  // Fluent API: examples
-  withExamples(newExamples: ProgramExample[]): ProgramBuilder<T> {
-    const copy = this._clone();
-    copy.exampleList = [...this.exampleList, ...newExamples];
-    return makeProgramCallable(copy);
-  }
-  examples(inputOutputMap: Record<string, any>): ProgramBuilder<T> {
-    const newExamples: ProgramExample[] = Object.entries(inputOutputMap).map(([input, output]) => ({
-      input: { input },
-      output: typeof output === 'string' ? output : JSON.stringify(output, null, 2)
-    }));
-    return this.withExamples(newExamples);
-  }
-
-  // Fluent API: returns
-  returns<U>(): ProgramBuilder<U> {
-    return makeProgramCallable(this as unknown as ProgramBuilderImpl<U>);
-  }
-
   // Fluent API: using
-  using(model: string | ModelDefinition): ProgramBuilder<T> {
+  using(model: string | ModelDefinition): ProgramBuilder<TOut, TIn> {
     const copy = this._clone();
     copy._executionOptions = { ...this._executionOptions, model };
     return makeProgramCallable(copy);
   }
 
   // Persistence
-  persist(id: string): ProgramBuilder<T> {
+  persist(id: string): ProgramBuilder<TOut, TIn> {
     this.persistId = id;
     this.needsSave = true;
     return makeProgramCallable(this);
@@ -253,12 +239,19 @@ class ProgramBuilderImpl<T> extends BuilderBase<ProgramExecutionOptions> {
       const examplesString = this.exampleList.map(ex => `Input: ${JSON.stringify(ex.input)}\nOutput: ${ex.output}`).join('\n\n');
       fullPrompt = `${examplesString}\n\n${fullPrompt}`;
     }
-    const systemPrompt = process.env.CODE_GEN_SYSTEM_PROMPT || "You are an expert code generation AI. Given a description or a task, you will generate high-quality, runnable code. Only output the code itself, with no additional explanation, commentary, or markdown formatting unless it's part of the code (e.g. in a comment block).";
+    const systemPrompt = process.env.CODE_GEN_SYSTEM_PROMPT || "You are an expert TypeScript code generation AI. Given a description or a task, you will generate high-quality, runnable TypeScript code. The code should be a single TypeScript function. Only output the code itself, with no additional explanation, commentary, or markdown formatting unless it's part of the code (e.g. in a comment block).";
     const llmOptions = {
       temperature: options.temperature ?? this._executionOptions.temperature,
       maxTokens: options.maxTokens ?? this._executionOptions.maxTokens,
     };
     let response: string;
+    
+    // Debug the final prompt being sent to the LLM
+    debug('program', '========== FINAL PROMPT TO LLM ==========');
+    debug('program', 'System prompt: %s', systemPrompt);
+    debug('program', 'Full prompt: %s', fullPrompt);
+    debug('program', '=========================================');
+    
     // Use chat endpoint for chat models, completion otherwise
     if (
       finalModelDef.provider === ModelProvider.MOCK ||
@@ -278,6 +271,12 @@ class ProgramBuilderImpl<T> extends BuilderBase<ProgramExecutionOptions> {
       if (systemPrompt) completionPrompt = `${systemPrompt}\n\n${fullPrompt}`;
       response = await modelAdapter.complete(completionPrompt, llmOptions);
     }
+    
+    // Debug the raw response from the LLM
+    debug('program', '========== RAW LLM RESPONSE ==========');
+    debug('program', response);
+    debug('program', '======================================');
+    
     const generated = extractCodeFromResponse(response);
     debug('program', 'Generated code: %s', generated.substring(0, 100) + '...');
     this.generatedCode = generated;
@@ -289,52 +288,49 @@ class ProgramBuilderImpl<T> extends BuilderBase<ProgramExecutionOptions> {
     const { forceRegenerate = false, ...executionOpts } = buildOptions;
     debug('program', 'build called with variables: %o, executionOptions: %o, forceRegenerate: %s', variables, executionOpts, forceRegenerate);
 
-    if (this.persistId && !this.needsSave && !forceRegenerate) {
-      const loadedProgram = await store.load('program', this.persistId);
-      if (loadedProgram && loadedProgram.code && !this.generatedCode) {
-        // TODO: Consider if loadedProgram was generated with different variables than `variables` now passed to build.
-        // For now, if loaded, use its code. A more robust solution might compare/invalidate.
-        debug('program', 'Using loaded code from persisted program: %s', this.persistId);
-        this.generatedCode = loadedProgram.code;
-        if (this.generatedCode == null) {
-          debug('program', 'Error: Loaded program has null code for %s', this.persistId);
-          throw new Error("No code generated or loaded");
+    // --- Attempt to load first if persistId exists and not forcing regeneration ---
+    if (this.persistId && !forceRegenerate) {
+      try {
+        const loadedProgram = await store.load('program', this.persistId);
+        // Ensure loadedProgram and its code are valid before using
+        if (loadedProgram?.generatedCode && typeof loadedProgram.generatedCode === 'string' && loadedProgram.generatedCode.trim().length > 0) {
+          debug('program', 'Using loaded code from persisted program: %s', this.persistId);
+          this.generatedCode = loadedProgram.generatedCode;
+          this.needsSave = false; // We successfully loaded, no immediate need to save
+          return createFunctionProxy(this.generatedCode!); // Safe: checked non-empty string above
+        } else {
+          debug('program', 'Loaded program %s did not contain valid code. Will generate.', this.persistId);
         }
-        return createFunctionProxy(this.generatedCode);
+      } catch (loadError: any) {
+        debug('program', 'Failed to load persisted program %s: %s. Will generate.', this.persistId, loadError.message);
       }
     }
 
-    // Determine if generation is needed
-    const needsToGenerate = !this.generatedCode || forceRegenerate || this.needsSave;
-    debug('program', 'Build: needsToGenerate = %s (generatedCode: %s, forceRegenerate: %s, needsSave: %s)',
-      needsToGenerate, !!this.generatedCode, forceRegenerate, this.needsSave);
+    // --- Determine if generation is needed --- 
+    const needsToGenerate = !this.generatedCode || forceRegenerate;
+    debug('program', 'Build: needsToGenerate = %s (generatedCode exists: %s, forceRegenerate: %s)',
+          needsToGenerate, !!this.generatedCode, forceRegenerate);
 
     if (needsToGenerate) {
-      // Use variables passed to build(), fallback to empty if none.
-      // Merge executionOpts from build() with existing this._executionOptions.
       const finalOptions = { ...this._executionOptions, ...executionOpts };
       debug('program', 'Build: Calling generate with variables: %o, finalOptions: %o', variables, finalOptions);
       await this.generate(variables, finalOptions);
 
-      if (this.persistId && this.needsSave) {
+      if (!this.generatedCode) {
+        debug('program', 'Error: Generation completed but this.generatedCode is still null.');
+        throw new Error("Code generation failed to produce code.");
+      }
+
+      if (this.persistId) {
         debug('program', 'Build: Attempting to save program after generation: %s', this.persistId);
         try {
           await this.save(this.persistId);
         } catch (e: any) {
           debug('program', 'Build: Save failed for %s: %s', this.persistId, e.message);
-          // needsSave remains true if save fails
+          this.needsSave = true;
         }
       }
-      if (!this.generatedCode) {
-        debug('program', 'Error: Generation completed but this.generatedCode is still null.');
-        throw new Error("Code generation failed to produce code.");
-      }
-      return createFunctionProxy(this.generatedCode!);
-    }
-    
-    // If not needsToGenerate and this.generatedCode exists (e.g. from a previous .generate() call without build, or loaded then build called again without force)
-    if (!this.generatedCode) {
-        // This case should ideally not be reached if logic is correct, but as a safeguard:
+    } else if (!this.generatedCode) {
         debug('program', 'Error: build determined no generation needed, but no generated code exists. Regenerating.');
         const finalOptions = { ...this._executionOptions, ...executionOpts };
         await this.generate(variables, finalOptions);
@@ -342,39 +338,195 @@ class ProgramBuilderImpl<T> extends BuilderBase<ProgramExecutionOptions> {
             debug('program', 'Error: Safeguard generation failed to produce code.');
             throw new Error("Code generation failed to produce code.");
         }
+        if (this.persistId) { 
+          await this.save(this.persistId).catch(e => debug('program', 'Build: Safeguard save failed: %s', e.message));
+        }
     }
+    
+    if (!this.generatedCode) {
+       debug('program', 'Error: Reached end of build without generatedCode.');
+       throw new Error("Failed to obtain executable code.");
+    }
+    // Safe: We explicitly check and throw if generatedCode is null/undefined above
     return createFunctionProxy(this.generatedCode!);
   }
 
   // --- Private: clone for immutability ---
-  private _clone(): ProgramBuilderImpl<T> {
-    const copy = new ProgramBuilderImpl<T>([] as any, []);
+  private _clone(): ProgramBuilderImpl<TOut, TIn> {
+    const copy = new ProgramBuilderImpl<TOut, TIn>([] as any, []);
     copy.template = this.template;
     copy.exampleList = [...this.exampleList];
     copy.generatedCode = this.generatedCode;
     copy._executionOptions = { ...this._executionOptions };
     copy.persistId = this.persistId;
     copy.needsSave = this.needsSave;
+    copy._inputSchema = this._inputSchema;
+    copy._outputSchema = this._outputSchema;
     return copy;
+  }
+
+  /** Attach a Zod schema for validating program inputs */
+  inputs<I extends z.ZodTypeAny>(schema: I): ProgramBuilder<TOut, z.infer<I>> {
+    this._inputSchema = schema;
+
+    try {
+      let instruction: string | null = null;
+      let example: string | null = null;
+
+      if (schema instanceof z.ZodObject) {
+        example = appendSchemaTypeHints(schema.shape);
+        instruction = `IMPORTANT: Your function **must** accept an input matching this JSON object structure:\n${example}\n\n`;
+        debug('program', 'Generated INPUT (object) schema example for LLM: %s', example);
+      } else if (schema instanceof z.ZodArray && schema.element instanceof z.ZodObject) {
+        const itemShape = (schema.element as z.ZodObject<any>).shape;
+        example = appendSchemaTypeHints(itemShape);
+        instruction = `IMPORTANT: Your function **must** accept an input that is a JSON array, where each element matches this object structure:\n${example}\n\n`;
+        debug('program', 'Generated INPUT (array of objects) schema example for LLM: %s', example);
+      } else if (schema instanceof z.ZodArray) {
+        let elementTypeName = schema.element._def?.typeName;
+        if (elementTypeName) {
+            instruction = `IMPORTANT: Your function **must** accept an input that is a JSON array of ${elementTypeName.replace('Zod', '').toLowerCase()}s.\n\n`;
+            debug('program', 'Generated INPUT (array of primitives) schema hint for LLM: %s', instruction);
+        } else {
+            debug('program', 'Could not generate detailed INPUT schema hint for this ZodArray structure.');
+        }
+      } else {
+        debug('program', `Could not generate detailed INPUT schema hint for top-level schema type: ${schema._def?.typeName}`);
+      }
+
+      if (instruction) {
+        this.template.segments.unshift(instruction); // Add to the beginning
+        debug('program', 'Prepended input JSON instructions to program prompt');
+      }
+    } catch (err) {
+      debug('program', 'Failed to append input schema type hints: %o', err);
+    }
+    return makeProgramCallable(this as unknown as ProgramBuilderImpl<TOut, z.infer<I>>);
+  }
+
+  /** Attach a Zod schema for validating program outputs */
+  outputs<O extends z.ZodTypeAny>(schema: O): ProgramBuilder<z.infer<O>, TIn> {
+    this._outputSchema = schema;
+
+    try {
+      let instruction: string | null = null;
+      let example: string | null = null;
+
+      if (schema instanceof z.ZodObject) {
+        example = appendSchemaTypeHints(schema.shape);
+        instruction = `\n\nIMPORTANT: You must respond with a valid JSON object that matches this structure:\n${example}\n`;
+        debug('program', 'Generated OUTPUT (object) schema example for LLM: %s', example);
+      } else if (schema instanceof z.ZodArray && schema.element instanceof z.ZodObject) {
+        const itemShape = (schema.element as z.ZodObject<any>).shape;
+        example = appendSchemaTypeHints(itemShape);
+        instruction = `\n\nIMPORTANT: You must respond with a JSON array, where each element matches this object structure:\n${example}\n`;
+        debug('program', 'Generated OUTPUT (array of objects) schema example for LLM: %s', example);
+      } else if (schema instanceof z.ZodArray) {
+        let elementTypeName = schema.element._def?.typeName;
+        if (elementTypeName) {
+            instruction = `\n\nIMPORTANT: You must respond with a JSON array of ${elementTypeName.replace('Zod', '').toLowerCase()}s.\n`;
+            debug('program', 'Generated OUTPUT (array of primitives) schema hint for LLM: %s', instruction);
+        } else {
+            debug('program', 'Could not generate detailed OUTPUT schema hint for this ZodArray structure.');
+        }
+      } else {
+        debug('program', `Could not generate detailed OUTPUT schema hint for top-level schema type: ${schema._def?.typeName}`);
+      }
+
+      if (instruction) {
+        this.template.segments.push(instruction); // Add to the end
+        debug('program', 'Added JSON format instructions to program prompt');
+      }
+    } catch (err) {
+      debug('program', 'Failed to append output schema type hints: %o', err);
+    }
+
+    return makeProgramCallable(this as unknown as ProgramBuilderImpl<z.infer<O>, TIn>);
+  }
+
+  /** @deprecated Use .outputs() instead */
+  returns<U>(): ProgramBuilder<U, TIn> {
+    return makeProgramCallable(this as unknown as ProgramBuilderImpl<U, TIn>);
   }
 }
 
 // --- Proxy shell to make builder callable ---
-function makeProgramCallable<T>(builder: ProgramBuilderImpl<T>): ProgramBuilder<T> {
+function makeProgramCallable<TOut = any, TIn = ProgramVariables>(builder: ProgramBuilderImpl<TOut, TIn>): ProgramBuilder<TOut, TIn> {
   let finalExecutableFn: any | null = null;
   let buildPromise: Promise<any> | null = null;
+  let lastBuildOptions: any = {};
 
   const callable = async (...args: any[]) => {
-    if (!finalExecutableFn) {
-      if (!buildPromise) {
-        // Call builder.build() which returns the fully processed, callable function proxy
-        buildPromise = builder.build();
+    // Check if options have changed since last build
+    const currentOptions = { ...builder._executionOptions };
+    const optionsChanged = JSON.stringify(lastBuildOptions) !== JSON.stringify(currentOptions);
+    
+    // Force rebuild if options changed, especially forceRegenerate
+    const needsRebuild = !finalExecutableFn || 
+                         optionsChanged || 
+                         currentOptions.forceRegenerate === true;
+    
+    // If we need to rebuild or haven't built yet
+    if (needsRebuild) {
+      // Capture current options for future comparisons
+      lastBuildOptions = { ...currentOptions };
+      
+      // Prepare variables for build. Only use user args if an input schema exists;
+      // otherwise pass an empty object to avoid rendering errors when the prompt
+      // has no variables and callers supply primitives (e.g., number).
+      let sampleVars: any = {};
+      if (builder._inputSchema) {
+        sampleVars = args.length === 1 ? args[0] : args;
       }
-      // The result of builder.build() is the function proxy itself
+      debug('program', 'Rebuilding function with options: %o, needsRebuild: %s', currentOptions, needsRebuild);
+      
+      buildPromise = builder.build(sampleVars, currentOptions);
       finalExecutableFn = await buildPromise;
-      buildPromise = null; // Reset for potential future re-builds if builder state changes
+      buildPromise = null;
+      
+      // Clear forceRegenerate after use to prevent continuous regeneration
+      if (builder._executionOptions.forceRegenerate) {
+        const optsCopy = { ...builder._executionOptions };
+        delete optsCopy.forceRegenerate;
+        builder._executionOptions = optsCopy;
+      }
     }
-    return await finalExecutableFn(...args);
+
+    // ---------------- Input validation ----------------
+    let processedArgs: any[] = args;
+    if (builder._inputSchema) {
+      try {
+        const validated = args.length === 1
+          ? builder._inputSchema.parse(args[0])
+          : builder._inputSchema.parse(args);
+        processedArgs = args.length === 1 && typeof validated === 'object' && !Array.isArray(validated) 
+          ? [validated] 
+          : Array.isArray(validated) ? validated : [validated];
+      } catch (e) {
+        debug('program', 'Input validation failed: %o', e);
+        throw e; // Re-throw ZodError
+      }
+    }
+
+    // Execute the generated function
+    let result;
+    try {
+      result = await finalExecutableFn(...processedArgs);
+    } catch (execError) {
+       debug('program', 'Error executing generated function: %o', execError);
+       throw execError;
+    }
+
+    // ---------------- Output validation ---------------
+    if (builder._outputSchema) {
+      try {
+        result = builder._outputSchema.parse(result);
+      } catch (e) {
+        debug('program', 'Output validation failed: %o', e);
+        throw e; // Re-throw ZodError
+      }
+    }
+    return result;
   };
   // Attach all builder methods/properties
   Object.getOwnPropertyNames(ProgramBuilderImpl.prototype).forEach(k => {
@@ -383,21 +535,21 @@ function makeProgramCallable<T>(builder: ProgramBuilderImpl<T>): ProgramBuilder<
     }
   });
   // Forward properties
-  ['generatedCode', 'persistId', 'needsSave', '_executionOptions', 'exampleList', 'template'].forEach(p => {
+  ['generatedCode', 'persistId', 'needsSave', '_executionOptions', 'exampleList', 'template', '_inputSchema', '_outputSchema'].forEach(p => {
     Object.defineProperty(callable, p, {
       get: () => (builder as any)[p],
       set: v => { (builder as any)[p] = v; }
     });
   });
-  return callable as ProgramBuilder<T>;
+  return callable as unknown as ProgramBuilder<TOut, TIn>;
 }
 
 // --- Exported API ---
-export function createProgram<T = string>(
+export function createProgram<TOut = any, TIn = ProgramVariables>(
   strings: TemplateStringsArray,
   values: any[]
-): ProgramBuilder<T> {
+): ProgramBuilder<TOut, TIn> {
   debug('program', 'createProgram called');
-  const builder = new ProgramBuilderImpl<T>(strings, values);
+  const builder = new ProgramBuilderImpl<TOut, TIn>(strings, values);
   return makeProgramCallable(builder);
 }

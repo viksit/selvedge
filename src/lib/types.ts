@@ -2,6 +2,10 @@
  * Type definitions for the Selvedge library
  */
 
+import { PromptVariables } from './prompts/types';
+
+import { PromptTemplate } from './prompts/types';
+
 /**
  * Supported model providers
  */
@@ -124,6 +128,33 @@ export interface SelvedgeInstance {
    * @returns Array of version IDs
    */
   listPromptVersions(name: string): Promise<string[]>;
+
+  /**
+   * Access to schema helper functions (string, number, array, etc.)
+   */
+  schema: SelvedgeSchemaHelpers;
+
+  /**
+   * Create a Chain of Thought prompt
+   */
+  ChainOfThought: (strings: TemplateStringsArray, ...values: any[]) => PromptTemplate<any, PromptVariables>;
+}
+
+/**
+ * Type for the schema helper functions provided by Selvedge.
+ */
+export interface SelvedgeSchemaHelpers {
+  string: (desc?: string) => import('zod').ZodString;
+  number: (desc?: string) => import('zod').ZodNumber;
+  boolean: (desc?: string) => import('zod').ZodBoolean;
+  array: <T>(item: import('zod').ZodType<T>, desc?: string) => import('zod').ZodArray<import('zod').ZodType<T>>;
+  shape: <T extends import('zod').ZodRawShape>(obj: T) => import('zod').ZodObject<T>;
+  record: <K extends import('zod').ZodTypeAny, V extends import('zod').ZodTypeAny>(
+    keySchema: K,
+    valueSchema: V,
+    desc?: string
+  ) => import('zod').ZodRecord<K, V>;
+  z: typeof import('./schema').z; // Refer to the z exported by schema.ts
 }
 
 /**

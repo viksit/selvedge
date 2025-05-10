@@ -4,8 +4,7 @@
     "noImplicitAny": false,
     "strictNullChecks": false,
     "types": [
-      "node",
-      "commander"
+      "node"
     ],
     "typeRoots": [
       "../node_modules/@types",

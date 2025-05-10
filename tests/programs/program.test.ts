@@ -1,497 +1,412 @@
 /**
- * Tests for the program generation functionality
+ * Tests for the Program Builder functionality
  */
-import { describe, it, expect, beforeEach, beforeAll } from 'bun:test';
-import { selvedge } from '../../src';
-import { ModelRegistry } from '@models';
-import * as fs from 'fs/promises';
-import * as path from 'path';
-import * as os from 'os';
-import { store } from '../../src/lib/storage';
-import { debug, enableAllDebug } from '../../src/lib/utils/debug';
+// @ts-ignore - Bun test types
+import { expect, describe, it, beforeEach } from 'bun:test';
+import { selvedge } from '../../src/lib/core';
+import { ModelProvider } from '../../src/lib/types';
+import { ModelRegistry } from '../../src/lib/models';
+import { MockModelAdapter } from '../../src/lib/providers/mock/mock';
+import * as z from 'zod';
+import { ZodError } from 'zod';
 
-describe('Program Generation', () => {
-  // Ensure storage directories exist
-  beforeAll(async () => {
-    // Enable all debug output
-    enableAllDebug();
-
-    // Use a consistent test directory for all program tests
-    const testStorageDir = path.join(os.tmpdir(), 'selvedge-program-tests');
-
-    // Add a unique ID to the store instance for debugging
-    const storeTestId = Math.random().toString(36).substr(2, 9);
-    (store as any).testId = storeTestId;
-
-    console.log('--------------- DEBUG INFO ---------------');
-    console.log(`Test store ID: ${storeTestId}`);
-    console.log(`Test store instance: ${store.constructor.name}`);
-    console.log(`Initial base path: ${store.getBasePath()}`);
-
-    // Set the storage path before running any tests
-    store.setBasePath(testStorageDir);
-    console.log(`After setting: base path = ${store.getBasePath()}`);
-    console.log('-----------------------------------------');
-
-    const programsDir = path.join(testStorageDir, 'programs');
-    const promptsDir = path.join(testStorageDir, 'prompts');
-
-    try {
-      // Create base directory
-      await fs.mkdir(testStorageDir, { recursive: true });
-      // Create programs directory
-      await fs.mkdir(programsDir, { recursive: true });
-      // Create prompts directory
-      await fs.mkdir(promptsDir, { recursive: true });
-
-      // Verify directories exist
-      const programsExist = await fs.access(programsDir).then(() => true).catch(() => false);
-      const promptsExist = await fs.access(promptsDir).then(() => true).catch(() => false);
-
-      console.log(`Using test storage directory: ${testStorageDir}`);
-      console.log(`Test directories created: programs=${programsExist}, prompts=${promptsExist}`);
-    } catch (error) {
-      console.error(`Error creating storage directories: ${(error as Error).message}`);
-    }
-
+describe('Program Builder', () => {
+  // Set up test environment before each test
+  beforeEach(() => {
+    // Clear the registry to ensure clean state
+    ModelRegistry.clear();
+    
     // Register a mock model for testing
     selvedge.models({
-      test: selvedge.mock('test-model')
+      testModel: selvedge.mock('test-model')
     });
   });
-
-  beforeEach(() => {
-    // Set up the mock responses
-    const mockAdapter = ModelRegistry.getAdapter(selvedge.mock('test-model'));
-
+  
+  // 1. Basic Program Creation and Execution
+  it('creates and executes a basic program', async () => {
+    // Configure the mock adapter to return a simple TypeScript function
+    const mockAdapter = ModelRegistry.getAdapter({
+      provider: ModelProvider.MOCK,
+      model: 'test-model'
+    }) as MockModelAdapter;
+    
     mockAdapter.setResponses({
-      chat: (messages) => {
-        const userMessage = messages.find(m => m.role === 'user')?.content || '';
-        debug('selvedge:test:program:mock', "Received userMessage in mock:", JSON.stringify(userMessage)); // Log every message
-
-        // --- Debug checks for frequency related messages ---
-        if (userMessage.includes("word frequency counter") || userMessage.includes("frequency") || userMessage.includes("extract some frequency")) {
-            debug('selvedge:test:program:mock', "userMessage is relevant to frequency checks.");
-            debug('selvedge:test:program:mock', "userMessage.includes('frequency'):", userMessage.includes('frequency'));
-            debug('selvedge:test:program:mock', "userMessage.includes('extract some frequency'):", userMessage.includes('extract some frequency'));
-        }
-        // --- End of debug checks ---
-
-        if (userMessage.includes('sort array')) {
-          return '```javascript\nfunction sortArray(arr) {\n  return [...arr].sort((a, b) => a - b);\n}\n```';
-        } else if (userMessage.includes('capitalize')) {
-          return '```javascript\nfunction capitalize(str) {\n  return str.charAt(0).toUpperCase() + str.slice(1);\n}\n```';
-        } else if (userMessage.includes('add numbers')) {
-          return '```javascript\nfunction add(a, b) {\n  return a + b;\n}\n```';
-        } else if (userMessage.includes('invalid code')) {
-          return '```javascript\nfunction broken( {\n  syntax error here\n}\n```';
-        } else if (userMessage.includes('math utility')) {
-          return '```javascript\nfunction add(a, b) {\n  return a + b;\n}\n\nfunction multiply(a, b) {\n  return a * b;\n}\n```';
-        } else if (userMessage.includes('frequency') || userMessage.includes('extract some frequency')) {
-          // Handle both the original request and regeneration requests
-          return '```javascript\nfunction countWords(text) {\n  const words = text.toLowerCase().split(/\\W+/).filter(w => w.length > 0);\n  const frequency = {};\n  for (const word of words) {\n    frequency[word] = (frequency[word] || 0) + 1;\n  }\n  return frequency;\n}\n```';
-        } else {
-          // Default to returning the add function for any unmatched request
-          return '```javascript\nfunction add(a, b) {\n  return a + b;\n}\n```';
-        }
-      }
+      chat: '```typescript\nfunction double(n) {\n  return n * 2;\n}\n```'
     });
-  });
-
-  it('should create a program template', () => {
-    const program = selvedge.program`Generate a function that ${(task: string) => task}`;
-    expect(program).toBeDefined();
-    expect(program.exampleList).toBeInstanceOf(Array);
-    expect(program.exampleList.length).toBe(0);
-  });
-
-  it('should add examples to a program', () => {
-    const program = selvedge.program`Generate a function that ${(task: string) => task}`
-      .withExamples([
-        {
-          input: { task: 'sorts an array' },
-          output: 'function sortArray(arr) {\n  return [...arr].sort();\n}'
-        }
-      ]);
-
-    expect(program.exampleList.length).toBe(1);
-    expect(program.exampleList[0].input.task).toBe('sorts an array');
-  });
-
-  it('should add examples using the examples method', () => {
-    const program = selvedge.program`Generate a function that sorts an array`
-      .examples({
-        "sort numbers": "function sortNumbers(arr) {\n  return [...arr].sort((a, b) => a - b);\n}"
-      });
-
-    expect(program.exampleList.length).toBe(1);
-    expect(program.exampleList[0].input.input).toBe('sort numbers');
-  });
-
-  it('should generate code using the mock adapter', async () => {
-    const program = selvedge.program`Generate a function that ${(task: string) => task}`
-      .using('test');
-
-    const code = await program.generate({ task: 'sort array of numbers' });
-    expect(code).toContain('function sortArray');
-    expect(code).toContain('sort((a, b)');
-  });
-
-  it('should extract code from a response with markdown', async () => {
-    const program = selvedge.program`Generate a function that ${(task: string) => task}`
-      .using('test');
-
-    const code = await program.generate({ task: 'capitalizes a string' });
-    expect(code).toContain('function capitalize');
-    expect(code).not.toContain('```');
-  });
-
-  it('should specify return type for a program', () => {
-    interface FunctionResult {
-      code: string;
-      name: string;
-    }
-
-    const program = selvedge.program`Generate a function that ${(task: string) => task}`
-      .returns<FunctionResult>();
-
-    // This is just a type check, no runtime assertion needed
-    expect(program).toBeDefined();
-  });
-
-  // test that the return type matches the specified type
-  // TBD
-  // it('should return the correct type', async () => {
-  //   interface FunctionResult {
-  //     code: string;
-  //     name: string;
-  //   }
-
-  //   const program = selvedge.program`Generate a function that ${(task: string) => task}`
-  //     .returns<FunctionResult>();
-
-  //   const result = await program.generate({ task: 'add numbers' });
-  //   expect(result).toBeDefined();
-  //   expect(typeof result).toBe('object');
-  //   expect(typeof result.code).toBe('string');
-  //   expect(typeof result.name).toBe('string');
-  // });
-
-  // // New tests for execute functionality
-  it('should execute generated code and return a function proxy', async () => {
-    const program = selvedge.program`Generate a function that ${(task: string) => task}`
-      .using('test');
-
-    const result = await program.build({ task: 'add numbers' });
-    expect(result).toBeDefined();
-    expect(typeof result).toBe('function');
-    expect(typeof result.add).toBe('function');
-    await expect(result.add(2, 3)).resolves.toBe(5);
-    // The proxy should also be callable directly if it's the main function
-    await expect(result(2, 3)).resolves.toBe(5);
-  });
-
-  it('should access the first function when multiple functions are generated', async () => {
-    const program = selvedge.program`Generate ${(task: string) => task}`
-      .using('test');
-
-    const result = await program.build({ task: 'math utility functions' });
-    expect(result).toBeDefined();
-    expect(typeof result).toBe('function');
-    expect(typeof result.add).toBe('function');
-    // The proxy will only expose the first function found in the code
-    await expect(result(2, 3)).resolves.toBe(5);
-    // Other functions won't be directly accessible through the proxy
-  });
-
-  it('should handle persistence of programs with persist()', async () => {
-    // Create a unique program name for this test
-    const programName = 'persist-test-program-' + Date.now();
-
-    // Create and persist the program
-    const program = selvedge.program`Generate a function that ${(task: string) => task}`
-      .using('test')
-      .persist(programName);
-
-    // Skip the console output verification since we're using debug instead of console.log now
-    // Just verify the program was created
-    expect(program).toBeDefined();
-
-    // Wait longer for the background save to complete
-    await new Promise(resolve => setTimeout(resolve, 500));
-
-    // Pre-generate the code to ensure it's ready when we load
-    await program.generate({ task: 'add numbers' });
-
-    // Save it directly to ensure it's saved
-    await program.save(programName);
-
-    // Add a small delay to ensure file system operations complete
-    await new Promise(resolve => setTimeout(resolve, 100));
-
-    // Verify the program directory exists after saving
-    const programsDir = path.join(store.getBasePath(), 'programs');
-    const programDir = path.join(programsDir, programName);
-
-    const dirExists = await fs.access(programDir).then(() => true).catch(() => false);
-    console.log(`Persist test - directory exists: ${dirExists} - ${programDir}`);
-
-    if (dirExists) {
-      const files = await fs.readdir(programDir);
-      console.log(`Persist test - files in directory:`, files);
-    } else {
-      console.log('WARNING: Program directory was not created during persist+save');
-
-      // Create the directory structure explicitly as a fallback
-      await fs.mkdir(programDir, { recursive: true });
-      console.log(`Created directory explicitly: ${programDir}`);
-    }
-
-
-    // Try to load the program to verify it was actually saved
-    const loadedProgram = await selvedge.loadProgram(programName);
-
-    // Verify the loaded program works
-    expect(loadedProgram).toBeDefined();
-    expect(loadedProgram.build).toBeDefined();
-
-    // Execute the loaded program
-    const result = await loadedProgram.build();
-
+    
+    // Create a simple program
+    const doubleProgram = selvedge.program`double the input number`.using('testModel');
+    
+    // Execute the program
+    const result = await doubleProgram(5);
+    
     // Verify the result
-    expect(result).toBeDefined();
-    expect(typeof result).toBe('function');
-    await expect(result(2, 3)).resolves.toBe(5);
+    expect(result).toBe(10);
+    
+    // Verify the generated code was stored
+    expect(doubleProgram.generatedCode).toContain('function double');
   });
-
-  it('should save and load programs with save()', async () => {
-    // Create a unique program name for this test
-    const programName = 'save-test-program-' + Date.now();
-
-    // Create and save the program
-    const program = selvedge.program`Generate a function that ${(task: string) => task}`
-      .using('test');
-
-    // Pre-generate the code to ensure it's ready when we save
-    await program.generate({ task: 'add numbers' });
-
-    // Save the program using the proper storage mechanism
-    await program.save(programName);
-
-    // Add a small delay to ensure file system operations complete
-    // This helps avoid race conditions with file system operations
-    await new Promise(resolve => setTimeout(resolve, 50));
-
-    // Verify the program directory exists after saving
-    const programsDir = path.join(store.getBasePath(), 'programs');
-    const programDir = path.join(programsDir, programName);
-
-    const dirExists = await fs.access(programDir).then(() => true).catch(() => false);
-    console.log(`Directory exists before loading: ${dirExists} - ${programDir}`);
-
-    if (dirExists) {
-      const files = await fs.readdir(programDir);
-      console.log(`Files in program directory before loading:`, files);
-    }
-
-    // Now load the program from storage
-    const loadedProgram = await selvedge.loadProgram(programName);
-
-    // Verify the loaded program is defined and has the expected properties
-    expect(loadedProgram).toBeDefined();
-    expect(loadedProgram.build).toBeDefined();
-    expect(typeof loadedProgram.build).toBe('function');
-
-    // Execute the loaded program
-    const result = await loadedProgram.build();
-
-    // Verify the result works as expected
-    expect(result).toBeDefined();
-    expect(typeof result).toBe('function');
-    expect(typeof result.add).toBe('function');
-    await expect(result.add(2, 3)).resolves.toBe(5);
-  });
-
-  it('should handle errors during code generation', async () => {
-    const program = selvedge.program`Generate a function that ${(task: string) => task}`
-      .using('test');
-
+  
+  // 2. Input Schema Validation
+  it('validates input against schema', async () => {
+    const mockAdapter = ModelRegistry.getAdapter({
+      provider: ModelProvider.MOCK,
+      model: 'test-model'
+    }) as MockModelAdapter;
+    
+    mockAdapter.setResponses({
+      chat: '```typescript\nfunction process(input) {\n  return input.num * 2;\n}\n```'
+    });
+    
+    // Create a program with input schema
+    const program = selvedge.program`process the input number`
+      .inputs(z.object({ 
+        num: z.number(),
+        optional: z.string().optional()
+      }))
+      .using('testModel');
+    
+    // Valid input should work
+    const result = await program({ num: 5 });
+    expect(result).toBe(10);
+    
+    // Valid input with optional field should work
+    const result2 = await program({ num: 5, optional: "test" });
+    expect(result2).toBe(10);
+    
+    // Invalid input type should fail with Zod error
     try {
-      await program.generate({ task: 'invalid code' });
-      // Should not reach here
+      // @ts-ignore - intentionally passing invalid input
+      await program({ num: "not a number" });
+      // If we reach here, the test should fail
       expect(true).toBe(false);
-    } catch (error) {
-      expect(error).toBeDefined();
+    } catch (e) {
+      // Should throw Zod validation error
+      const zodError = e as ZodError;
+      expect(zodError.name).toBe('ZodError');
+      expect(zodError.issues[0].code).toBe('invalid_type');
     }
-  });
-
-  it('should handle errors during code execution', async () => {
-    const mockAdapter = ModelRegistry.getAdapter(selvedge.mock('test-model'));
-    if (mockAdapter && typeof mockAdapter.setResponses === 'function') {
-      mockAdapter.setResponses({
-        chat: () => '```javascript\nfunction broken() {\n  return nonExistentVariable;\n}\n```'
-      });
-    }
-
-    const program = selvedge.program`Generate a function with an error`
-      .using('test');
-
+    
+    // Invalid input structure should fail
     try {
-      await program.build();
-      // Should not reach here if properly handling errors
+      // @ts-ignore - intentionally passing wrong structure
+      await program(5);
+      // If we reach here, the test should fail
       expect(true).toBe(false);
-    } catch (error) {
-      expect(error).toBeDefined();
+    } catch (e) {
+      // Should throw Zod validation error
+      const zodError = e as ZodError;
+      expect(zodError.name).toBe('ZodError');
     }
   });
-
-  it('should validate return types at runtime', async () => {
-    interface Person {
-      name: string;
-      age: number;
+  
+  // 3. Output Schema Validation
+  it('validates output against schema', async () => {
+    const mockAdapter = ModelRegistry.getAdapter({
+      provider: ModelProvider.MOCK,
+      model: 'test-model'
+    }) as MockModelAdapter;
+    
+    // 1. Test with output matching schema
+    mockAdapter.setResponses({
+      chat: '```typescript\nfunction process(input) {\n  return { result: input.num * 2 };\n}\n```'
+    });
+    
+    // Create program with nested output schema
+    const program = selvedge.program`process the input number`
+      .inputs(z.object({ num: z.number() }))
+      .outputs(z.object({ 
+        result: z.number(),
+        metadata: z.object({
+          processed: z.boolean()
+        }).optional()
+      }))
+      .using('testModel');
+    
+    // Valid output should work
+    const result = await program({ num: 5 });
+    expect(result).toEqual({ result: 10 });
+    
+    // 2. Test with wrong output type
+    mockAdapter.setResponses({
+      chat: '```typescript\nfunction process(input) {\n  return { result: String(input.num * 2) };\n}\n```'
+    });
+    
+    program.generatedCode = null;
+    
+    try {
+      await program({ num: 5 });
+      expect(true).toBe(false);
+    } catch (e) {
+      // Just check that an error is thrown
+      expect(e).toBeDefined();
+      expect(e instanceof Error).toBe(true);
+      // Check if the error message mentions validation or type issues
+      const error = e as Error;
+      if (error.message) {
+        expect(error.message.includes('invalid_type') || 
+               error.message.includes('validation') || 
+               error.message.includes('Expected')).toBe(true);
+      }
     }
-
-    // Set up mock to return a function that returns a Person object
-    const mockAdapter = ModelRegistry.getAdapter(selvedge.mock('test-model'));
-    if (mockAdapter && typeof mockAdapter.setResponses === 'function') {
-      mockAdapter.setResponses({
-        chat: () => '```javascript\nfunction createPerson(name, age) {\n  return { name, age };\n}\n```'
-      });
+    
+    // 3. Test with wrong output structure
+    mockAdapter.setResponses({
+      chat: '```typescript\nfunction process(input) {\n  return input.num * 2;\n}\n```'
+    });
+    
+    program.generatedCode = null;
+    
+    try {
+      await program({ num: 5 });
+      expect(true).toBe(false);
+    } catch (e) {
+      // Just check that an error is thrown
+      expect(e).toBeDefined();
+      expect(e instanceof Error).toBe(true);
     }
-
-    const program = selvedge.program`Generate a function that creates a person object`
-      .using('test')
-      .returns<Person>();
-
-    const result = await program.build();
-    const person = await result.createPerson('John', 30);
-
-    expect(person).toHaveProperty('name');
-    expect(person).toHaveProperty('age');
-    expect(person.name).toBe('John');
-    expect(person.age).toBe(30);
+    
+    // 4. Test with extra unexpected fields - should pass since Zod ignores extra properties by default
+    mockAdapter.setResponses({
+      chat: '```typescript\nfunction process(input) {\n  return { result: input.num * 2, extra: "field" };\n}\n```'
+    });
+    
+    program.generatedCode = null;
+    
+    const result2 = await program({ num: 5 });
+    expect(result2.result).toBe(10);
   });
-
-  it('should return clean objects without Object prototype methods when printed', async () => {
-    const program = selvedge.program`Generate a function that ${(task: string) => task}`
-      .using('test');
-
-    const result = await program.build({ task: 'word frequency counter' });
-
-    // Test the function by calling it with a sample text
-    const frequencies = await result.countWords('This is a test. This is only a test.');
-
-    // Check that the result is an object with the word frequencies
-    expect(frequencies).toBeDefined();
-    expect(typeof frequencies).toBe('object');
-
-    // Check that it contains the expected word frequencies
-    expect(frequencies.this).toBe(2);
-    expect(frequencies.is).toBe(2);
-    expect(frequencies.a).toBe(2);
-    expect(frequencies.test).toBe(2);
-    expect(frequencies.only).toBe(1);
-
-    // When the object is printed or JSON.stringified, it should only contain the word frequencies
-    const serialized = JSON.stringify(frequencies);
-    const parsed = JSON.parse(serialized);
-
-    // The serialized object should only contain the word frequencies
-    expect(Object.keys(parsed).length).toBe(5); // this, is, a, test, only
-    expect(parsed.this).toBe(2);
-    expect(parsed.is).toBe(2);
-    expect(parsed.a).toBe(2);
-    expect(parsed.test).toBe(2);
-    expect(parsed.only).toBe(1);
-
-    // The serialized object should not contain any functions
-    expect(Object.values(parsed).every(value => typeof value === 'number')).toBe(true);
-  });
-
-  it('should save and load a program with generated code', async () => {
-    // Create a unique program name for this test
-    const programName = 'generated-code-test-' + Date.now();
-
-    // Create a program
-    const p = selvedge.program`
-      /**
-       * Add two numbers together
-       * @param a - First number
-       * @param b - Second number
-       * @returns The sum of a and b
-       */
-    `.using('test');
-
-    // Generate the code first
-    await p.generate({ task: 'add numbers' });
-
-    // Save the program
-    await p.save(programName);
-
-    // Load the program
-    const loadedProgram = await selvedge.loadProgram(programName);
-
-    // Verify the loaded program has the generated code
-    expect(loadedProgram.generatedCode).toBeDefined();
-
-    // Explicitly set the mock adapter to return the add function
-    const mockAdapter = ModelRegistry.getAdapter(selvedge.mock('test-model'));
-    if (mockAdapter && typeof mockAdapter.setResponses === 'function') {
-      mockAdapter.setResponses({
-        chat: () => '```javascript\nfunction add(a, b) {\n  return a + b;\n}\n```'
-      });
+  
+  // 4. Schema Hints in LLM Prompt
+  it('includes schema hints in LLM prompt', async () => {
+    // We'll use this to capture the prompt content
+    let capturedMessages: any[] = [];
+    
+    // Set up a mock that captures the messages
+    const mockAdapter = ModelRegistry.getAdapter({
+      provider: ModelProvider.MOCK,
+      model: 'test-model'
+    }) as MockModelAdapter;
+    
+    // Override the chat method to capture messages before responding
+    mockAdapter.chat = async (messages, _options) => {
+      capturedMessages = messages;
+      return '```typescript\nfunction test(input) { return input; }\n```';
+    };
+    
+    // Create a program with both input and output schemas
+    const program = selvedge.program`test the input`
+      .inputs(z.object({ num: z.number() }))
+      .outputs(z.object({ result: z.number() }))
+      .using('testModel');
+    
+    // Call the program to trigger the LLM
+    try {
+      await program({ num: 5 });
+    } catch (e) {
+      // Ignore any errors - we just want to check the prompt
     }
-
-    // Execute the program without regenerating
-    const result = await loadedProgram.build();
-
-    // Verify the result works as expected
-    expect(result).toBeDefined();
-    expect(typeof result).toBe('function');
-    await expect(result(2, 3)).resolves.toBe(5);
+    
+    // Verify the system message mentions TypeScript
+    expect(capturedMessages[0].content).toContain('TypeScript code generation');
+    
+    // Verify input schema hints are included
+    expect(capturedMessages[1].content).toContain('IMPORTANT: Your function **must** accept an input');
+    expect(capturedMessages[1].content).toContain('num');
+    
+    // Verify output schema hints are included
+    expect(capturedMessages[1].content).toContain('IMPORTANT: You must respond with a valid JSON object');
+    expect(capturedMessages[1].content).toContain('result');
   });
-
-  it('should force regeneration of code when forceRegenerate option is true', async () => {
-    // Create a unique program name for this test
-    const programName = 'force-regen-test-' + Date.now();
-
-    // Create a program
-    const p = selvedge.program`
-      /**
-       * Add two numbers together
-       * @param a - First number
-       * @param b - Second number
-       * @returns The sum of a and b
-       */
-    `.using('test');
-
-    // Generate the code first
-    await p.generate({ task: 'add numbers' });
-
-    // Save the program
-    await p.save(programName);
-
-    // Load the program
-    const loadedProgram = await selvedge.loadProgram(programName);
-
-    // Verify the loaded program has the generated code
-    expect(loadedProgram.generatedCode).toBeDefined();
-
-    // Explicitly set the mock adapter to return the add function
-    const mockAdapter = ModelRegistry.getAdapter(selvedge.mock('test-model'));
-    if (mockAdapter && typeof mockAdapter.setResponses === 'function') {
-      mockAdapter.setResponses({
-        chat: () => '```javascript\nfunction add(a, b) {\n  return a + b;\n}\n```'
-      });
+  
+  // 5. forceRegenerate Option
+  it('respects forceRegenerate option', async () => {
+    let callCount = 0;
+    
+    // Set up a mock that tracks calls
+    const mockAdapter = ModelRegistry.getAdapter({
+      provider: ModelProvider.MOCK,
+      model: 'test-model'
+    }) as MockModelAdapter;
+    
+    // First call will return multiply by 2
+    mockAdapter.chat = async () => {
+      callCount++;
+      if (callCount === 1) {
+        return '```typescript\nfunction multiply(n) { return n * 2; }\n```';
+      } else {
+        // Second call will return multiply by 3
+        return '```typescript\nfunction multiply(n) { return n * 3; }\n```';
+      }
+    };
+    
+    // Create the program
+    const program = selvedge.program`multiply the input number`
+      .using('testModel');
+    
+    // First call - should use first response (multiply by 2)
+    const result1 = await program(5);
+    expect(result1).toBe(10);
+    
+    // Second call - should use cached code, not call LLM again
+    const result2 = await program(5);
+    expect(result2).toBe(10);
+    expect(callCount).toBe(1); // Still only one call
+    
+    // Third call with forceRegenerate - should call LLM again
+    const result3 = await program.options({ forceRegenerate: true })(5);
+    expect(result3).toBe(15); // Using second response (multiply by 3)
+    expect(callCount).toBe(2); // Now two calls
+  });
+  
+  // 7. Error Handling - Malformed Code
+  it('handles malformed code from LLM', async () => {
+    const mockAdapter = ModelRegistry.getAdapter({
+      provider: ModelProvider.MOCK,
+      model: 'test-model'
+    }) as MockModelAdapter;
+    
+    // Set invalid code as response
+    mockAdapter.setResponses({
+      chat: '```typescript\nThis is not valid TypeScript!\n```'
+    });
+    
+    // Create a simple program
+    const program = selvedge.program`this will fail`.using('testModel');
+    
+    // Should throw error with invalid code
+    try {
+      await program(5);
+      // If we reach here, the test should fail
+      expect(true).toBe(false);
+    } catch (e) {
+      // Should throw error related to code generation
+      expect(e).toBeDefined();
     }
-
-    // Execute with forceRegenerate option
-    const result = await loadedProgram.build({}, { forceRegenerate: true });
-
-    // We can't guarantee the code will be different since it's a mock,
-    // but we can verify the execute method works
-    expect(result).toBeDefined();
-    expect(typeof result).toBe('function');
-    await expect(result(2, 3)).resolves.toBe(5);
+    
+    // Now test syntax error
+    mockAdapter.setResponses({
+      chat: '```typescript\nfunction incomplete() {\n  return x +\n}\n```'
+    });
+    program.generatedCode = null;
+    
+    try {
+      await program(5);
+      expect(true).toBe(false);
+    } catch (e) {
+      expect(e).toBeDefined();
+    }
+    
+    // Test code that doesn't export a function
+    mockAdapter.setResponses({
+      chat: '```typescript\nconst someVariable = 42;\n```'
+    });
+    program.generatedCode = null;
+    
+    try {
+      await program(5);
+      expect(true).toBe(false);
+    } catch (e) {
+      expect(e).toBeDefined();
+    }
+  });
+  
+  // 8. Model Selection
+  it('uses the specified model', async () => {
+    // Register a second mock model
+    selvedge.models({
+      anotherModel: selvedge.mock('another-model')
+    });
+    
+    // Configure the first mock
+    const mockAdapter1 = ModelRegistry.getAdapter({
+      provider: ModelProvider.MOCK,
+      model: 'test-model'
+    }) as MockModelAdapter;
+    
+    mockAdapter1.setResponses({
+      chat: '```typescript\nfunction test() { return "first model"; }\n```'
+    });
+    
+    // Configure the second mock
+    const mockAdapter2 = ModelRegistry.getAdapter({
+      provider: ModelProvider.MOCK,
+      model: 'another-model'
+    }) as MockModelAdapter;
+    
+    mockAdapter2.setResponses({
+      chat: '```typescript\nfunction test() { return "second model"; }\n```'
+    });
+    
+    // Create a program using the second model
+    const program = selvedge.program`use another model`.using('anotherModel');
+    
+    // Execute the program
+    const result = await program();
+    
+    // Verify the correct model was used by checking the result
+    expect(result).toBe('second model');
+  });
+  
+  // 6. Program Persistence Tests
+  it('correctly persists and loads programs without regenerating', async () => {
+    // Track LLM call count
+    let llmCallCount = 0;
+    let currentResponse = '';
+    
+    // Set up a mock adapter that changes its response on each call
+    const mockAdapter = ModelRegistry.getAdapter({
+      provider: ModelProvider.MOCK,
+      model: 'test-model'
+    }) as MockModelAdapter;
+    
+    // Override chat method to track calls and return different responses
+    mockAdapter.chat = async (messages, _options) => {
+      llmCallCount++;
+      
+      // First call returns one function, second call returns different function
+      if (llmCallCount === 1) {
+        currentResponse = '```typescript\nfunction version1(input) { return { result: "v1-" + input.value, count: 10 }; }\n```';
+      } else {
+        currentResponse = '```typescript\nfunction version2(input) { return { result: "v2-" + input.value, count: 20 }; }\n```';
+      }
+      
+      return currentResponse;
+    };
+    
+    // Create a program with persistence enabled
+    const uniquePersistId = `testPersistenceProgram_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const program = selvedge.program`
+      Create a function that takes an input with a value property
+      and returns an object with result and count properties.
+    `
+    .inputs(z.object({ value: z.string() }))
+    .outputs(z.object({ result: z.string(), count: z.number() }))
+    .using('testModel')
+    .persist(uniquePersistId);
+    
+    // First run - should generate and save
+    const result1 = await program({ value: 'test' });
+    
+    // Verify first run results
+    expect(llmCallCount).toBe(1);
+    expect(result1.result).toBe('v1-test');
+    expect(result1.count).toBe(10);
+    
+    // Second run - should load from persistence without regenerating
+    const result2 = await program({ value: 'another' });
+    
+    // Verify it didn't call LLM again
+    expect(llmCallCount).toBe(1); // Still 1 - loaded from storage
+    expect(result2.result).toBe('v1-another'); // Same code version
+    expect(result2.count).toBe(10);
+    
+    // Third run with force regenerate - should call LLM again
+    const result3 = await program.options({ forceRegenerate: true })({ value: 'forced' });
+    
+    // Verify it called LLM again and got the new version
+    expect(llmCallCount).toBe(2); // Now 2 - regenerated
+    expect(result3.result).toBe('v2-forced'); // New code version
+    expect(result3.count).toBe(20);
   });
 });

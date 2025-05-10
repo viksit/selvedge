@@ -3,6 +3,7 @@
  */
 import OpenAI from 'openai';
 import { ModelDefinition, ModelAdapter, ApiClientConfig } from '../types';
+import { debug } from '../utils/debug';
 
 /**
  * OpenAI-specific configuration options
@@ -26,6 +27,7 @@ export class OpenAIModelAdapter implements ModelAdapter {
    */
   constructor(modelDef: ModelDefinition) {
     this.modelDef = modelDef;
+    debug('llm', 'Creating OpenAI adapter for model: %s', modelDef.model);
     
     // Extract configuration
     const config = modelDef.config as OpenAIConfig || {};
@@ -38,6 +40,7 @@ export class OpenAIModelAdapter implements ModelAdapter {
       timeout: config.timeout,
       maxRetries: config.maxRetries || 3,
     });
+    debug('llm', 'OpenAI client initialized');
   }
   
   /**
@@ -48,7 +51,11 @@ export class OpenAIModelAdapter implements ModelAdapter {
    * @returns The completion text
    */
   async complete(prompt: string, options: Record<string, any> = {}): Promise<string> {
+    debug('llm', 'Sending completion request to OpenAI model: %s', this.modelDef.model);
+    debug('llm', 'Completion options: %o', options);
+    debug('llm', 'Sending prompt: %s', prompt);
     try {
+      debug('llm', 'Prompt length: %d characters', prompt.length);
       const completion = await this.client.completions.create({
         model: this.modelDef.model,
         prompt,
@@ -60,8 +67,11 @@ export class OpenAIModelAdapter implements ModelAdapter {
         stop: options.stop,
       });
       
-      return completion.choices[0]?.text || '';
+      const result = completion.choices[0]?.text || '';
+      debug('llm', 'Received completion response of %d characters', result.length);
+      return result;
     } catch (error) {
+      debug('llm', 'OpenAI completion error: %o', error);
       console.error('OpenAI completion error:', error);
       throw new Error(`OpenAI completion failed: ${(error as Error).message}`);
     }
@@ -75,8 +85,13 @@ export class OpenAIModelAdapter implements ModelAdapter {
    * @returns The chat completion response
    */
   async chat(messages: any[], options: Record<string, any> = {}): Promise<any> {
+    debug('llm', 'Sending chat request to OpenAI model: %s', this.modelDef.model);
+    debug('llm', 'Chat options: %o', options);
+    debug('llm', 'Messages count: %d', messages.length);
+    
     try {
       const isStreaming = options.stream === true;
+      debug('llm', 'Stream mode: %s', isStreaming ? 'enabled' : 'disabled');
       
       const response = await this.client.chat.completions.create({
         model: this.modelDef.model,
@@ -92,12 +107,16 @@ export class OpenAIModelAdapter implements ModelAdapter {
       
       // For streaming, return the stream directly
       if (isStreaming) {
+        debug('llm', 'Returning stream response');
         return response;
       }
       
       // For non-streaming, safely extract the content
-      return (response as OpenAI.ChatCompletion).choices[0]?.message?.content || '';
+      const content = (response as OpenAI.ChatCompletion).choices[0]?.message?.content || '';
+      debug('llm', 'Received chat response of %d characters', content.length);
+      return content;
     } catch (error) {
+      debug('llm', 'OpenAI chat completion error: %o', error);
       console.error('OpenAI chat completion error:', error);
       throw new Error(`OpenAI chat completion failed: ${(error as Error).message}`);
     }
