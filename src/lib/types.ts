@@ -2,6 +2,10 @@
  * Type definitions for the Selvedge library
  */
 
+import { PromptVariables } from './prompts/types';
+
+import { PromptTemplate } from './prompts/types';
+
 /**
  * Supported model providers
  */
@@ -129,6 +133,11 @@ export interface SelvedgeInstance {
    * Access to schema helper functions (string, number, array, etc.)
    */
   schema: SelvedgeSchemaHelpers;
+
+  /**
+   * Create a Chain of Thought prompt
+   */
+  ChainOfThought: (strings: TemplateStringsArray, ...values: any[]) => PromptTemplate<any, PromptVariables>;
 }
 
 /**
