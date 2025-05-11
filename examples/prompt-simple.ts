@@ -1,6 +1,6 @@
 import { selvedge as s } from '../src';
 
-s.debug('*');
+// s.debug('*');
 
 s.models({
   gpt4: s.openai('gpt-4')
