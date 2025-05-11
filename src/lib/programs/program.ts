@@ -253,7 +253,7 @@ class ProgramBuilderImpl<TOut = any, TIn = ProgramVariables> extends BuilderBase
       const examplesString = this.exampleList.map(ex => `Input: ${JSON.stringify(ex.input)}\nOutput: ${ex.output}`).join('\n\n');
       fullPrompt = `${examplesString}\n\n${fullPrompt}`;
     }
-    const systemPrompt = process.env.CODE_GEN_SYSTEM_PROMPT || "You are an expert code generation AI. Given a description or a task, you will generate high-quality, runnable code. Only output the code itself, with no additional explanation, commentary, or markdown formatting unless it's part of the code (e.g. in a comment block).";
+    const systemPrompt = process.env.CODE_GEN_SYSTEM_PROMPT || "You are an expert TypeScript code generation AI. Given a description or a task, you will generate high-quality, runnable TypeScript code. The code should be a single TypeScript function. Only output the code itself, with no additional explanation, commentary, or markdown formatting unless it's part of the code (e.g. in a comment block).";
     const llmOptions = {
       temperature: options.temperature ?? this._executionOptions.temperature,
       maxTokens: options.maxTokens ?? this._executionOptions.maxTokens,
@@ -377,20 +377,33 @@ class ProgramBuilderImpl<TOut = any, TIn = ProgramVariables> extends BuilderBase
   inputs<I extends z.ZodTypeAny>(schema: I): ProgramBuilder<TOut, z.infer<I>> {
     this._inputSchema = schema;
 
-    // Add a hint so the LLM sees the expected input structure
     try {
-      let rawShape: z.ZodRawShape | undefined;
+      let instruction: string | null = null;
+      let example: string | null = null;
+
       if (schema instanceof z.ZodObject) {
-        rawShape = schema.shape;
-      } else if (schema && typeof (schema as any)._def === 'object') {
-        if ((schema as any)._def.schema instanceof z.ZodObject) {
-          rawShape = ((schema as any)._def.schema as z.ZodObject<any>).shape;
+        example = appendSchemaTypeHints(schema.shape);
+        instruction = `IMPORTANT: Your function **must** accept an input matching this JSON object structure:\n${example}\n\n`;
+        debug('program', 'Generated INPUT (object) schema example for LLM: %s', example);
+      } else if (schema instanceof z.ZodArray && schema.element instanceof z.ZodObject) {
+        const itemShape = (schema.element as z.ZodObject<any>).shape;
+        example = appendSchemaTypeHints(itemShape);
+        instruction = `IMPORTANT: Your function **must** accept an input that is a JSON array, where each element matches this object structure:\n${example}\n\n`;
+        debug('program', 'Generated INPUT (array of objects) schema example for LLM: %s', example);
+      } else if (schema instanceof z.ZodArray) {
+        let elementTypeName = schema.element._def?.typeName;
+        if (elementTypeName) {
+            instruction = `IMPORTANT: Your function **must** accept an input that is a JSON array of ${elementTypeName.replace('Zod', '').toLowerCase()}s.\n\n`;
+            debug('program', 'Generated INPUT (array of primitives) schema hint for LLM: %s', instruction);
+        } else {
+            debug('program', 'Could not generate detailed INPUT schema hint for this ZodArray structure.');
         }
+      } else {
+        debug('program', `Could not generate detailed INPUT schema hint for top-level schema type: ${schema._def?.typeName}`);
       }
-      if (rawShape) {
-        const example = appendSchemaTypeHints(rawShape);
-        debug('program', 'Generated INPUT schema example for LLM: %s', example);
-        this.template.segments.unshift(`IMPORTANT: Your function **must** accept an input matching this JSON shape:\n${example}\n\n`);
+
+      if (instruction) {
+        this.template.segments.unshift(instruction); // Add to the beginning
         debug('program', 'Prepended input JSON instructions to program prompt');
       }
     } catch (err) {
@@ -403,29 +416,37 @@ class ProgramBuilderImpl<TOut = any, TIn = ProgramVariables> extends BuilderBase
   outputs<O extends z.ZodTypeAny>(schema: O): ProgramBuilder<z.infer<O>, TIn> {
     this._outputSchema = schema;
 
-    // ------------------------------------------------------------------
-    // Add type-hint instructions for the LLM, mirroring prompt.outputs()
-    // ------------------------------------------------------------------
     try {
-      let rawShape: z.ZodRawShape | undefined;
+      let instruction: string | null = null;
+      let example: string | null = null;
 
       if (schema instanceof z.ZodObject) {
-        rawShape = schema.shape;
-      } else if (schema && typeof (schema as any)._def === 'object') {
-        // If the user passed a raw shape wrapped via z.object(shape)
-        if ((schema as any)._def.schema instanceof z.ZodObject) {
-          rawShape = ((schema as any)._def.schema as z.ZodObject<any>).shape;
+        example = appendSchemaTypeHints(schema.shape);
+        instruction = `\n\nIMPORTANT: You must respond with a valid JSON object that matches this structure:\n${example}\n`;
+        debug('program', 'Generated OUTPUT (object) schema example for LLM: %s', example);
+      } else if (schema instanceof z.ZodArray && schema.element instanceof z.ZodObject) {
+        const itemShape = (schema.element as z.ZodObject<any>).shape;
+        example = appendSchemaTypeHints(itemShape);
+        instruction = `\n\nIMPORTANT: You must respond with a JSON array, where each element matches this object structure:\n${example}\n`;
+        debug('program', 'Generated OUTPUT (array of objects) schema example for LLM: %s', example);
+      } else if (schema instanceof z.ZodArray) {
+        let elementTypeName = schema.element._def?.typeName;
+        if (elementTypeName) {
+            instruction = `\n\nIMPORTANT: You must respond with a JSON array of ${elementTypeName.replace('Zod', '').toLowerCase()}s.\n`;
+            debug('program', 'Generated OUTPUT (array of primitives) schema hint for LLM: %s', instruction);
+        } else {
+            debug('program', 'Could not generate detailed OUTPUT schema hint for this ZodArray structure.');
         }
+      } else {
+        debug('program', `Could not generate detailed OUTPUT schema hint for top-level schema type: ${schema._def?.typeName}`);
       }
 
-      if (rawShape) {
-        const example = appendSchemaTypeHints(rawShape);
-        debug('program', 'Generated schema example for LLM: %s', example);
-        this.template.segments.push(`\n\nIMPORTANT: You must respond with a valid JSON object that matches this structure:\n${example}\n`);
+      if (instruction) {
+        this.template.segments.push(instruction); // Add to the end
         debug('program', 'Added JSON format instructions to program prompt');
       }
     } catch (err) {
-      debug('program', 'Failed to append schema type hints: %o', err);
+      debug('program', 'Failed to append output schema type hints: %o', err);
     }
 
     return makeProgramCallable(this as unknown as ProgramBuilderImpl<z.infer<O>, TIn>);
