@@ -259,6 +259,13 @@ class ProgramBuilderImpl<TOut = any, TIn = ProgramVariables> extends BuilderBase
       maxTokens: options.maxTokens ?? this._executionOptions.maxTokens,
     };
     let response: string;
+    
+    // Debug the final prompt being sent to the LLM
+    debug('program', '========== FINAL PROMPT TO LLM ==========');
+    debug('program', 'System prompt: %s', systemPrompt);
+    debug('program', 'Full prompt: %s', fullPrompt);
+    debug('program', '=========================================');
+    
     // Use chat endpoint for chat models, completion otherwise
     if (
       finalModelDef.provider === ModelProvider.MOCK ||
@@ -278,6 +285,12 @@ class ProgramBuilderImpl<TOut = any, TIn = ProgramVariables> extends BuilderBase
       if (systemPrompt) completionPrompt = `${systemPrompt}\n\n${fullPrompt}`;
       response = await modelAdapter.complete(completionPrompt, llmOptions);
     }
+    
+    // Debug the raw response from the LLM
+    debug('program', '========== RAW LLM RESPONSE ==========');
+    debug('program', response);
+    debug('program', '======================================');
+    
     const generated = extractCodeFromResponse(response);
     debug('program', 'Generated code: %s', generated.substring(0, 100) + '...');
     this.generatedCode = generated;

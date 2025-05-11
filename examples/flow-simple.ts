@@ -41,20 +41,23 @@ const mapEntities = s.program`
     )
   )
   .outputs(
-    // return the counts of entities of each type as an object
+    // return the counts of entities of each type
     s.schema.array(
       s.schema.shape({
-        food: s.schema.number(),
-        drink: s.schema.number()
+        type: s.schema.string(),
+        count: s.schema.number(),
+        entities: s.schema.array(s.schema.string())
       })
     )
   )
+  .options({forceRegenerate: true})
   .using('gpt4');
 
 
 
 const pipeline = s.flow([
   extractEntities,
+  (result) => result.entities,
   mapEntities
 ]);
 
