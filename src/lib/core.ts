@@ -247,12 +247,6 @@ export const selvedge: SelvedgeInstance = {
       // Replace the template properties
       builder.template.segments = data.template.segments;
       builder.template.variables = data.template.variables;
-
-      // Set examples and model
-      if (data.examples) {
-        builder.exampleList = data.examples;
-      }
-
       if (data.model) {
         // First, store the original model definition
         builder.modelDef = data.model;
