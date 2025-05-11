@@ -1,6 +1,6 @@
 import { selvedge as s } from '../src';
 
-s.debug('*');
+// s.debug('*');
 
 // ------------------------------------------------------------------
 // 0. Configure models

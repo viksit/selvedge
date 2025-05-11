@@ -3,7 +3,7 @@
 import { selvedge as s } from '../src';
 
 // Enable all debug output so you can inspect the steps
-s.debug('*');
+// s.debug('*');
 
 // Register a model alias (replace with your real key / env)
 s.models({

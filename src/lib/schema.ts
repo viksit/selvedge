@@ -29,6 +29,12 @@ export const array = <T>(item: z.ZodType<T>, desc?: string) =>
 
 export const shape = <T extends z.ZodRawShape>(obj: T) => z.object(obj);
 
+export const record = <K extends z.ZodTypeAny, V extends z.ZodTypeAny>(
+  keySchema: K,
+  valueSchema: V,
+  desc?: string
+) => (desc ? z.record(keySchema, valueSchema).describe(desc) : z.record(keySchema, valueSchema));
+
 /* ------------------------------------------------------------------ */
 /* re‑exports & namespace                                             */
 /* ------------------------------------------------------------------ */
@@ -36,7 +42,7 @@ export const shape = <T extends z.ZodRawShape>(obj: T) => z.object(obj);
 export { z };                    // so users can reach full Zod if needed
 
 /* default export lets you `import { s } from "selvedge"` */
-const s = { string, number, boolean, array, shape, z };
+const s = { string, number, boolean, array, shape, record, z };
 export default s;
 
 /* Type helpers for internal use */
