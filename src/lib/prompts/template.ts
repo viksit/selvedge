@@ -211,7 +211,7 @@ class PromptTemplateImpl<TOut, TIn = PromptVariables>
     }
 
     const promptText = this.render(vars);
-    debug('prompt', 'Rendered prompt for LLM: %s', promptText.substring(0, 100) + (promptText.length > 100 ? '...' : ''));
+    debug('prompt', 'Rendered prompt for LLM: %s', promptText);
     
     const modelDef = resolveModel(mergedOpts.model);
     debug('prompt', 'Using model: %s/%s', modelDef.provider, modelDef.model);
@@ -227,7 +227,7 @@ class PromptTemplateImpl<TOut, TIn = PromptVariables>
       modelDef.provider === ModelProvider.MOCK ||
       modelDef.provider === ModelProvider.ANTHROPIC ||
       modelDef.model.includes('gpt-')
-        ? await adapter.chat(buildMessages(promptText, mergedOpts), mergedOpts)
+        ? await adapter.chat(buildMessages(promptText, mergedOpts, this._outputSchema), mergedOpts)
         : await adapter.complete(promptText, mergedOpts);
 
     debug('prompt', 'Raw response from LLM:\n%s', response);
@@ -268,15 +268,56 @@ class PromptTemplateImpl<TOut, TIn = PromptVariables>
   inputs<S extends z.ZodRawShape | z.ZodObject<any, any, any>>(
     schemaOrShape: S
   ): PromptTemplate<TOut, z.infer<S extends z.ZodRawShape ? z.ZodObject<S> : S>> {
+    let finalSchema: z.ZodTypeAny;
+    let rawShapeForHint: z.ZodRawShape | undefined = undefined;
+
     if (schemaOrShape instanceof z.ZodObject) {
-      // It's already a ZodObject, use it directly
       debug('prompt', 'Setting input schema with provided ZodObject. Shape: %o', Object.keys(schemaOrShape.shape));
-      this._inputSchema = schemaOrShape;
+      finalSchema = schemaOrShape;
+      rawShapeForHint = schemaOrShape.shape;
     } else {
-      // It's a ZodRawShape, wrap it with z.object()
       debug('prompt', 'Setting input schema with raw shape: %o', Object.keys(schemaOrShape));
-      this._inputSchema = z.object(schemaOrShape as z.ZodRawShape); // Cast needed due to union
+      finalSchema = z.object(schemaOrShape as z.ZodRawShape);
+      rawShapeForHint = schemaOrShape as z.ZodRawShape;
     }
+    this._inputSchema = finalSchema;
+
+    // ---- Add input schema hint for the LLM ----
+    try {
+      let instruction: string | null = null;
+      let example: string | null = null;
+
+      if (finalSchema instanceof z.ZodObject && rawShapeForHint) {
+        example = appendSchemaTypeHints(rawShapeForHint); // rawShapeForHint is already the shape for ZodObject
+        instruction = `IMPORTANT: The input you receive will be a JSON object matching this structure:\n${example}\n\n`;
+        debug('prompt', 'Generated INPUT (object) schema example for LLM prompt: %s', example);
+      } else if (finalSchema instanceof z.ZodArray && finalSchema.element instanceof z.ZodObject) {
+        const itemShape = (finalSchema.element as z.ZodObject<any>).shape;
+        example = appendSchemaTypeHints(itemShape);
+        instruction = `IMPORTANT: The input you receive will be a JSON array, where each element matches this object structure:\n${example}\n\n`;
+        debug('prompt', 'Generated INPUT (array of objects) schema example for LLM prompt: %s', example);
+      } else if (finalSchema instanceof z.ZodArray) {
+        let elementTypeName = finalSchema.element._def?.typeName;
+        if (elementTypeName) {
+            instruction = `IMPORTANT: The input you receive will be a JSON array of ${elementTypeName.replace('Zod', '').toLowerCase()}s.\n\n`;
+            debug('prompt', 'Generated INPUT (array of primitives) schema hint for LLM prompt: %s', instruction);
+        } else {
+            debug('prompt', 'Could not generate detailed INPUT schema hint for this ZodArray structure for LLM prompt.');
+        }
+      } else {
+        debug('prompt', `Could not generate detailed INPUT schema hint for top-level schema type for LLM prompt: ${finalSchema._def?.typeName}`);
+      }
+
+      if (instruction) {
+        // Prepend to segments so it appears before the main prompt text
+        this.segments.unshift(instruction); 
+        debug('prompt', 'Prepended input JSON instructions to prompt segments.');
+      }
+    } catch (err) {
+      debug('prompt', 'Failed to append input schema type hints to prompt segments: %o', err);
+    }
+    // ---- End of input schema hint ----
+
     return this as unknown as PromptTemplate<TOut, z.infer<S extends z.ZodRawShape ? z.ZodObject<S> : S>>;
   }
 
@@ -479,9 +520,16 @@ function resolveModel(m?: string | ModelDefinition): ModelDefinition {
   return m;
 }
 
-function buildMessages(prompt: string, opts: PromptExecutionOptions) {
+function buildMessages(prompt: string, opts: PromptExecutionOptions, outputSchema?: z.ZodType<any>) {
   const msgs = [{ role: 'user', content: prompt }];
-  if (opts.system) msgs.unshift({ role: 'system', content: opts.system });
+  let systemMessageContent = opts.system;
+
+  if (!systemMessageContent && outputSchema) {
+    systemMessageContent = "You are an AI assistant. Fulfill the user's request directly. If the user asks for a specific JSON output structure, you MUST provide your answer in that exact JSON format and nothing else. Do not provide explanations, code, or conversational filler if a JSON output structure is specified.";
+    debug('prompt', 'Injecting default system message for structured JSON output: "%s"', systemMessageContent);
+  }
+
+  if (systemMessageContent) msgs.unshift({ role: 'system', content: systemMessageContent });
   return msgs;
 }
 

@@ -158,20 +158,6 @@ class ProgramBuilderImpl<TOut = any, TIn = ProgramVariables> extends BuilderBase
     return makeProgramCallable(copy);
   }
 
-  // Fluent API: examples
-  withExamples(newExamples: ProgramExample[]): ProgramBuilder<TOut, TIn> {
-    const copy = this._clone();
-    copy.exampleList = [...this.exampleList, ...newExamples];
-    return makeProgramCallable(copy);
-  }
-  examples(inputOutputMap: Record<string, any>): ProgramBuilder<TOut, TIn> {
-    const newExamples: ProgramExample[] = Object.entries(inputOutputMap).map(([input, output]) => ({
-      input: { input },
-      output: typeof output === 'string' ? output : JSON.stringify(output, null, 2)
-    }));
-    return this.withExamples(newExamples);
-  }
-
   // Fluent API: using
   using(model: string | ModelDefinition): ProgramBuilder<TOut, TIn> {
     const copy = this._clone();

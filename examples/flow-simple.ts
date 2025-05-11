@@ -27,13 +27,13 @@ const extractEntities = s.prompt`
   })
   .using('gpt4');
 
-
+// ------------------------------------------------------------------
 // 2. Program that maps entities -> desired output shape
-
+// ------------------------------------------------------------------
 const mapEntities = s.program`
   for the given entities ${entities => entities}, 
   count the number of entities of each type 
-  and return the results as an array of objects
+  and return the results.
 `
   .inputs(
     s.schema.array(
@@ -53,8 +53,11 @@ const mapEntities = s.program`
   .options({forceRegenerate: true})
   .using('gpt4');
 
-
-
+// ------------------------------------------------------------------
+// 3. Compose via flow
+//    Flow input  : string text
+//    Flow output : array<{ name, type }>
+// ------------------------------------------------------------------
 const pipeline = s.flow([
   extractEntities,
   (result) => result.entities,

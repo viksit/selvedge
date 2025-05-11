@@ -72,9 +72,6 @@ export interface ProgramBuilder<TOut = any, TIn = ProgramVariables> {
   /** Flag to track if the program needs to be saved */
   needsSave?: boolean;
 
-  /** Add examples to the program builder */
-  withExamples(examples: ProgramExample[]): ProgramBuilder<TOut, TIn>;
-
   /** Add examples using a simpler input-output format */
   examples(inputOutputMap: Record<string, any>): ProgramBuilder<TOut, TIn>;
 

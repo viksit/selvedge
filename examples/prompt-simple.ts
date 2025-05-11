@@ -7,9 +7,7 @@ s.models({
 });
 
 const extract = s.prompt`
-  pick the food and drink entities from:
-  ${ text => text }
-  
+  pick the food and drink entities from the text ${text => text}.
   For each entity, identify its name and type (food or drink).
 `
 .inputs({ text: s.schema.string() })

@@ -2,11 +2,18 @@ import { selvedge as s } from '../src';
 
 s.debug('*');
 
+// ------------------------------------------------------------------
+// 0. Configure models
+// ------------------------------------------------------------------
 s.models({
   gpt4: s.openai('gpt-4')
 });
 
-
+// ------------------------------------------------------------------
+// 1. Define a program
+//    Program input  : number
+//    Program output : number
+// ------------------------------------------------------------------
 const double = s.program`
     write a typescript function that doubles a number 
     and returns the result

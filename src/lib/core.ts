@@ -176,11 +176,6 @@ export const selvedge: SelvedgeInstance = {
    * ```typescript
    * const generateFunction = selvedge.program`
    *   Generate a JavaScript function that ${task => task}
-   * `.withExamples([
-   *   {
-   *     input: { task: "sorts an array of numbers" },
-   *     output: "function sortNumbers(arr) {\n  return [...arr].sort((a, b) => a - b);\n}"
-   *   }
    * ]).using("smart");
    * 
    * // Later, generate code
