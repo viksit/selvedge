@@ -406,6 +406,18 @@ export function createTemplate<TOut, TIn = PromptVariables>(
 }
 
 /* ------------------------------------------------------------------ */
+/* restore factory (for loading from storage)                          */
+/* ------------------------------------------------------------------ */
+
+export function restoreTemplate<TOut, TIn = PromptVariables>(
+  segments: PromptSegment[],
+  variables: PromptVariable[] = [],
+): PromptTemplate<TOut, TIn> {
+  const tmpl = new PromptTemplateImpl<TOut, TIn>(segments, variables);
+  return makeCallable(tmpl);
+}
+
+/* ------------------------------------------------------------------ */
 /* proxy helper                                                       */
 /* ------------------------------------------------------------------ */
 

@@ -3,7 +3,7 @@
  */
 import { ModelRegistry } from './models';
 import { ModelProvider, SelvedgeInstance, ModelDefinition } from './types';
-import { createTemplate, PromptTemplate, PromptVariables } from './prompts';
+import { createTemplate, restoreTemplate, PromptTemplate, PromptVariables } from './prompts';
 import { createProgram, ProgramBuilder } from './programs';
 import { store } from './storage';
 import { flow as createFlow } from './flow';
@@ -218,12 +218,11 @@ export const selvedge: SelvedgeInstance = {
    */
   async loadProgram<T = string>(name: string, version?: string): Promise<ProgramBuilder<T>> {
     // Debug store instance
-    console.log('--------------- LOAD PROGRAM DEBUG ---------------');
-    console.log(`Load store ID: ${(store as any).testId || 'undefined'}`);
-    console.log(`Load store instance: ${store.constructor.name}`);
-    console.log(`Load base path: ${store.getBasePath()}`);
-    console.log(`Loading program: ${name}`);
-    console.log('---------------------------------------------------');
+    debug('program', `Load store ID: ${(store as any).testId || 'undefined'}`);
+    debug('program', `Load store instance: ${store.constructor.name}`);
+    debug('program', `Load base path: ${store.getBasePath()}`);
+    debug('program', `Loading program: ${name}`);
+    debug('program', '---------------------------------------------------');
 
     // Load the program data from storage
     const data = await store.load('program', name, version);
@@ -235,9 +234,12 @@ export const selvedge: SelvedgeInstance = {
 
     // Reconstruct the program builder with the loaded data
     if (data && data.template) {
-      // Replace the template properties
-      builder.template.segments = data.template.segments;
-      builder.template.variables = data.template.variables;
+      // Recreate template from persisted segments/variables to respect immutability
+      builder.template = restoreTemplate<T>(
+        data.template.segments,
+        data.template.variables || [],
+      );
+
       if (data.model) {
         // First, store the original model definition
         builder.modelDef = data.model;
@@ -348,21 +350,14 @@ export const selvedge: SelvedgeInstance = {
     // Load the prompt data from storage
     const data = await store.load('prompt', name, version);
 
-    // Create a base prompt template with empty segments
-    const emptyTemplate = [''] as unknown as TemplateStringsArray;
-    const template = createTemplate<T>(emptyTemplate, []);
-
-    // Reconstruct the prompt template with the loaded data
+    // If we have persisted data, restore immutably
     if (data && data.segments) {
-      // Replace the template properties
-      template.segments = data.segments;
-
-      if (data.variables) {
-        template.variables = data.variables;
-      }
+      return restoreTemplate<T>(data.segments, data.variables || []);
     }
 
-    return template;
+    // Fallback: return an empty template
+    const emptyTemplate = [''] as unknown as TemplateStringsArray;
+    return createTemplate<T>(emptyTemplate, []);
   },
 
   /**
