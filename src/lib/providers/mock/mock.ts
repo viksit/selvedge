@@ -96,8 +96,8 @@ export class MockModelAdapter implements ModelAdapter {
     }
     
     // Return default response or a generated one
-    let response = this.config.responses?.completion || 
-      `Mock response for model ${this.modelDef.model} with prompt: ${prompt.substring(0, 20)}...`;
+    let response = this.config.responses?.completion ?? 
+      `Mock response for model ${this.modelDef.model} with prompt: ${prompt}`;
       
     // Adjust response based on temperature if specified
     if (options.temperature && options.temperature > 0.7) {

@@ -352,7 +352,10 @@ export const selvedge: SelvedgeInstance = {
 
     // If we have persisted data, restore immutably
     if (data && data.segments) {
-      return restoreTemplate<T>(data.segments, data.variables || []);
+      const tmpl = restoreTemplate<T>(data.segments, data.variables || []);
+      (tmpl as any).persistId = name;
+      (tmpl as any).needsSave = false;
+      return tmpl;
     }
 
     // Fallback: return an empty template

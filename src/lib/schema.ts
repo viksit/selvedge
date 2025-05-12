@@ -35,6 +35,9 @@ export const record = <K extends z.ZodTypeAny, V extends z.ZodTypeAny>(
   desc?: string
 ) => (desc ? z.record(keySchema, valueSchema).describe(desc) : z.record(keySchema, valueSchema));
 
+export const enumerated = <T extends [string, ...string[]]>(values: T, desc?: string) =>
+  desc ? z.enum(values).describe(desc) : z.enum(values);
+
 /* ------------------------------------------------------------------ */
 /* re‑exports & namespace                                             */
 /* ------------------------------------------------------------------ */
@@ -42,7 +45,7 @@ export const record = <K extends z.ZodTypeAny, V extends z.ZodTypeAny>(
 export { z };                    // so users can reach full Zod if needed
 
 /* default export lets you `import { s } from "selvedge"` */
-const s = { string, number, boolean, array, shape, record, z };
+const s = { string, number, boolean, array, shape, record, z, enumerated };
 export default s;
 
 /* Type helpers for internal use */

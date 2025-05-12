@@ -658,7 +658,7 @@ export class Store {
       await this.ensureDir(typeDir);
       const entries = await fsPromises.readdir(typeDir, { withFileTypes: true } as any);
       return entries
-        .filter((d: any) => d.isDirectory && d.isDirectory())
+        .filter((d: any) => typeof d.isDirectory === 'function' && d.isDirectory())
         .map((d: any) => d.name);
     } catch (error: unknown) {
       const err = error as Error;

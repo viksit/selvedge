@@ -154,6 +154,7 @@ export interface SelvedgeSchemaHelpers {
     valueSchema: V,
     desc?: string
   ) => import('zod').ZodRecord<K, V>;
+  enumerated: <T extends [string, ...string[]]>(values: T, desc?: string) => import('zod').ZodEnum<T>;
   z: typeof import('./schema').z; // Refer to the z exported by schema.ts
 }
 
