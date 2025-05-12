@@ -76,18 +76,16 @@ export function appendSchemaTypeHints(shape: z.ZodRawShape): string {
     }
 
     if (schemaValue instanceof z.ZodString) {
-      example[key] = schemaValue.isUUID ? "uuid_string" : 
-                     schemaValue.isEmail ? "email_string" :
-                     schemaValue.isURL ? "url_string" :
-                     schemaValue.isDatetime ? "datetime_string" :
-                     "string";
+      // If developer provided a description, surface that as the hint; otherwise generic "string"
+      example[key] = schemaValue.description ?? "string";
       if (schemaValue.minLength !== null) example[key] += ` (min: ${schemaValue.minLength})`;
       if (schemaValue.maxLength !== null) example[key] += ` (max: ${schemaValue.maxLength})`;
 
     } 
     
     else if (schemaValue instanceof z.ZodNumber) {
-      example[key] = schemaValue.isInt ? 0 : 0.0;
+      // Prefer description if present for clearer hint; else numeric example
+      example[key] = schemaValue.description ?? 0;
       if (schemaValue.minValue !== null) example[key] += ` (min: ${schemaValue.minValue})`;
       if (schemaValue.maxValue !== null) example[key] += ` (max: ${schemaValue.maxValue})`;
 
@@ -121,8 +119,10 @@ export function appendSchemaTypeHints(shape: z.ZodRawShape): string {
     } 
     
     else if (schemaValue instanceof z.ZodEnum) {
-      // For enums, provide the first value as an example
-      example[key] = schemaValue.options[0] || "enum_value";
+      // Show description or first enum option
+      example[key] =
+      schemaValue.description ??
+      schemaValue.options.join(' | ');  
     } 
     
     else if (schemaValue instanceof z.ZodNativeEnum) {

@@ -15,9 +15,9 @@ const judge = s.ChainOfThought`
   - truth:    ${ q => q.ground_truth }
 
   Grade the answer as:
-    • perfect – answer === truth
-    • partial – answer is related but not exactly truth
-    • poor    – answer is wrong or unrelated
+    • perfect : answer === truth
+    • partial : answer is related but not exactly truth
+    • poor    : answer is wrong or unrelated
 `
 .inputs({
   q: s.schema.shape({
