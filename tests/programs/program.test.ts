@@ -347,4 +347,66 @@ describe('Program Builder', () => {
     // Verify the correct model was used by checking the result
     expect(result).toBe('second model');
   });
+  
+  // 6. Program Persistence Tests
+  it('correctly persists and loads programs without regenerating', async () => {
+    // Track LLM call count
+    let llmCallCount = 0;
+    let currentResponse = '';
+    
+    // Set up a mock adapter that changes its response on each call
+    const mockAdapter = ModelRegistry.getAdapter({
+      provider: ModelProvider.MOCK,
+      model: 'test-model'
+    }) as MockModelAdapter;
+    
+    // Override chat method to track calls and return different responses
+    mockAdapter.chat = async (messages, _options) => {
+      llmCallCount++;
+      
+      // First call returns one function, second call returns different function
+      if (llmCallCount === 1) {
+        currentResponse = '```typescript\nfunction version1(input) { return { result: "v1-" + input.value, count: 10 }; }\n```';
+      } else {
+        currentResponse = '```typescript\nfunction version2(input) { return { result: "v2-" + input.value, count: 20 }; }\n```';
+      }
+      
+      return currentResponse;
+    };
+    
+    // Create a program with persistence enabled
+    const uniquePersistId = `testPersistenceProgram_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const program = selvedge.program`
+      Create a function that takes an input with a value property
+      and returns an object with result and count properties.
+    `
+    .inputs(z.object({ value: z.string() }))
+    .outputs(z.object({ result: z.string(), count: z.number() }))
+    .using('testModel')
+    .persist(uniquePersistId);
+    
+    // First run - should generate and save
+    const result1 = await program({ value: 'test' });
+    
+    // Verify first run results
+    expect(llmCallCount).toBe(1);
+    expect(result1.result).toBe('v1-test');
+    expect(result1.count).toBe(10);
+    
+    // Second run - should load from persistence without regenerating
+    const result2 = await program({ value: 'another' });
+    
+    // Verify it didn't call LLM again
+    expect(llmCallCount).toBe(1); // Still 1 - loaded from storage
+    expect(result2.result).toBe('v1-another'); // Same code version
+    expect(result2.count).toBe(10);
+    
+    // Third run with force regenerate - should call LLM again
+    const result3 = await program.options({ forceRegenerate: true })({ value: 'forced' });
+    
+    // Verify it called LLM again and got the new version
+    expect(llmCallCount).toBe(2); // Now 2 - regenerated
+    expect(result3.result).toBe('v2-forced'); // New code version
+    expect(result3.count).toBe(20);
+  });
 });

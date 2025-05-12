@@ -74,9 +74,9 @@ async function testPromptSave() {
   
   // Create a simple prompt
   const prompt = selvedge.prompt`
-    Analyze the sentiment in this text: ${text => text}
-    Rate from -1.0 (negative) to 1.0 (positive)
-  `.returns<{ score: number }>();
+  Analyze the sentiment in this text: ${text => text}
+  Rate from -1.0 (negative) to 1.0 (positive)
+`.outputs(selvedge.schema.shape({ score: selvedge.schema.number() }));
   
   // Save the prompt
   await prompt.save('sentiment-analyzer');

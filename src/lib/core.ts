@@ -194,16 +194,7 @@ export const selvedge: SelvedgeInstance = {
    * @returns A prompt template object
    *
    * @example
-   * ```typescript
-   * const sentiment = selvedge.prompt`
-   *   Analyze the sentiment in this text: ${text}
-   *   Rate from -1.0 (negative) to 1.0 (positive)
-   * `.returns<{ score: number }>();
-   *
-   * // Later, execute the prompt
-   * const result = await sentiment.execute({ text: "I love this product!" });
-   * console.log(result.score); // 0.9
-   * ```
+  
    */
   prompt<T = any>(strings: TemplateStringsArray, ...values: any[]): PromptTemplate<T> {
     return createTemplate<T>(strings, values);

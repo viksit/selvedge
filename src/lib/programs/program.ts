@@ -288,52 +288,49 @@ class ProgramBuilderImpl<TOut = any, TIn = ProgramVariables> extends BuilderBase
     const { forceRegenerate = false, ...executionOpts } = buildOptions;
     debug('program', 'build called with variables: %o, executionOptions: %o, forceRegenerate: %s', variables, executionOpts, forceRegenerate);
 
-    if (this.persistId && !this.needsSave && !forceRegenerate) {
-      const loadedProgram = await store.load('program', this.persistId);
-      if (loadedProgram && loadedProgram.code && !this.generatedCode) {
-        // TODO: Consider if loadedProgram was generated with different variables than `variables` now passed to build.
-        // For now, if loaded, use its code. A more robust solution might compare/invalidate.
-        debug('program', 'Using loaded code from persisted program: %s', this.persistId);
-        this.generatedCode = loadedProgram.code;
-        if (this.generatedCode == null) {
-          debug('program', 'Error: Loaded program has null code for %s', this.persistId);
-          throw new Error("No code generated or loaded");
+    // --- Attempt to load first if persistId exists and not forcing regeneration ---
+    if (this.persistId && !forceRegenerate) {
+      try {
+        const loadedProgram = await store.load('program', this.persistId);
+        // Ensure loadedProgram and its code are valid before using
+        if (loadedProgram?.generatedCode && typeof loadedProgram.generatedCode === 'string' && loadedProgram.generatedCode.trim().length > 0) {
+          debug('program', 'Using loaded code from persisted program: %s', this.persistId);
+          this.generatedCode = loadedProgram.generatedCode;
+          this.needsSave = false; // We successfully loaded, no immediate need to save
+          return createFunctionProxy(this.generatedCode!); // Safe: checked non-empty string above
+        } else {
+          debug('program', 'Loaded program %s did not contain valid code. Will generate.', this.persistId);
         }
-        return createFunctionProxy(this.generatedCode);
+      } catch (loadError: any) {
+        debug('program', 'Failed to load persisted program %s: %s. Will generate.', this.persistId, loadError.message);
       }
     }
 
-    // Determine if generation is needed
-    const needsToGenerate = !this.generatedCode || forceRegenerate || this.needsSave;
-    debug('program', 'Build: needsToGenerate = %s (generatedCode: %s, forceRegenerate: %s, needsSave: %s)',
-      needsToGenerate, !!this.generatedCode, forceRegenerate, this.needsSave);
+    // --- Determine if generation is needed --- 
+    const needsToGenerate = !this.generatedCode || forceRegenerate;
+    debug('program', 'Build: needsToGenerate = %s (generatedCode exists: %s, forceRegenerate: %s)',
+          needsToGenerate, !!this.generatedCode, forceRegenerate);
 
     if (needsToGenerate) {
-      // Use variables passed to build(), fallback to empty if none.
-      // Merge executionOpts from build() with existing this._executionOptions.
       const finalOptions = { ...this._executionOptions, ...executionOpts };
       debug('program', 'Build: Calling generate with variables: %o, finalOptions: %o', variables, finalOptions);
       await this.generate(variables, finalOptions);
 
-      if (this.persistId && this.needsSave) {
+      if (!this.generatedCode) {
+        debug('program', 'Error: Generation completed but this.generatedCode is still null.');
+        throw new Error("Code generation failed to produce code.");
+      }
+
+      if (this.persistId) {
         debug('program', 'Build: Attempting to save program after generation: %s', this.persistId);
         try {
           await this.save(this.persistId);
         } catch (e: any) {
           debug('program', 'Build: Save failed for %s: %s', this.persistId, e.message);
-          // needsSave remains true if save fails
+          this.needsSave = true;
         }
       }
-      if (!this.generatedCode) {
-        debug('program', 'Error: Generation completed but this.generatedCode is still null.');
-        throw new Error("Code generation failed to produce code.");
-      }
-      return createFunctionProxy(this.generatedCode!);
-    }
-    
-    // If not needsToGenerate and this.generatedCode exists (e.g. from a previous .generate() call without build, or loaded then build called again without force)
-    if (!this.generatedCode) {
-        // This case should ideally not be reached if logic is correct, but as a safeguard:
+    } else if (!this.generatedCode) {
         debug('program', 'Error: build determined no generation needed, but no generated code exists. Regenerating.');
         const finalOptions = { ...this._executionOptions, ...executionOpts };
         await this.generate(variables, finalOptions);
@@ -341,7 +338,16 @@ class ProgramBuilderImpl<TOut = any, TIn = ProgramVariables> extends BuilderBase
             debug('program', 'Error: Safeguard generation failed to produce code.');
             throw new Error("Code generation failed to produce code.");
         }
+        if (this.persistId) { 
+          await this.save(this.persistId).catch(e => debug('program', 'Build: Safeguard save failed: %s', e.message));
+        }
     }
+    
+    if (!this.generatedCode) {
+       debug('program', 'Error: Reached end of build without generatedCode.');
+       throw new Error("Failed to obtain executable code.");
+    }
+    // Safe: We explicitly check and throw if generatedCode is null/undefined above
     return createFunctionProxy(this.generatedCode!);
   }
 
@@ -448,38 +454,77 @@ class ProgramBuilderImpl<TOut = any, TIn = ProgramVariables> extends BuilderBase
 function makeProgramCallable<TOut = any, TIn = ProgramVariables>(builder: ProgramBuilderImpl<TOut, TIn>): ProgramBuilder<TOut, TIn> {
   let finalExecutableFn: any | null = null;
   let buildPromise: Promise<any> | null = null;
+  let lastBuildOptions: any = {};
 
   const callable = async (...args: any[]) => {
-    // If we haven't built the executable yet, use this first call's arguments
-    if (!finalExecutableFn) {
-      if (!buildPromise) {
-        // Derive a representative variables object for build()
-        let sampleVars: any = {};
-        if (builder._inputSchema) {
-          sampleVars = args.length === 1 ? args[0] : args;
-          debug('program', 'Using first-call inputs as sampleVars for build(): %o', sampleVars);
-        }
-        buildPromise = builder.build(sampleVars, { forceRegenerate: true });
+    // Check if options have changed since last build
+    const currentOptions = { ...builder._executionOptions };
+    const optionsChanged = JSON.stringify(lastBuildOptions) !== JSON.stringify(currentOptions);
+    
+    // Force rebuild if options changed, especially forceRegenerate
+    const needsRebuild = !finalExecutableFn || 
+                         optionsChanged || 
+                         currentOptions.forceRegenerate === true;
+    
+    // If we need to rebuild or haven't built yet
+    if (needsRebuild) {
+      // Capture current options for future comparisons
+      lastBuildOptions = { ...currentOptions };
+      
+      // Prepare variables for build. Only use user args if an input schema exists;
+      // otherwise pass an empty object to avoid rendering errors when the prompt
+      // has no variables and callers supply primitives (e.g., number).
+      let sampleVars: any = {};
+      if (builder._inputSchema) {
+        sampleVars = args.length === 1 ? args[0] : args;
       }
+      debug('program', 'Rebuilding function with options: %o, needsRebuild: %s', currentOptions, needsRebuild);
+      
+      buildPromise = builder.build(sampleVars, currentOptions);
       finalExecutableFn = await buildPromise;
       buildPromise = null;
+      
+      // Clear forceRegenerate after use to prevent continuous regeneration
+      if (builder._executionOptions.forceRegenerate) {
+        const optsCopy = { ...builder._executionOptions };
+        delete optsCopy.forceRegenerate;
+        builder._executionOptions = optsCopy;
+      }
     }
 
     // ---------------- Input validation ----------------
     let processedArgs: any[] = args;
     if (builder._inputSchema) {
-      const validated = args.length === 1
-        ? builder._inputSchema.parse(args[0])
-        : builder._inputSchema.parse(args);
-      processedArgs = args.length === 1 ? [validated] : validated;
+      try {
+        const validated = args.length === 1
+          ? builder._inputSchema.parse(args[0])
+          : builder._inputSchema.parse(args);
+        processedArgs = args.length === 1 && typeof validated === 'object' && !Array.isArray(validated) 
+          ? [validated] 
+          : Array.isArray(validated) ? validated : [validated];
+      } catch (e) {
+        debug('program', 'Input validation failed: %o', e);
+        throw e; // Re-throw ZodError
+      }
     }
 
     // Execute the generated function
-    let result = await finalExecutableFn(...processedArgs);
+    let result;
+    try {
+      result = await finalExecutableFn(...processedArgs);
+    } catch (execError) {
+       debug('program', 'Error executing generated function: %o', execError);
+       throw execError;
+    }
 
     // ---------------- Output validation ---------------
     if (builder._outputSchema) {
-      result = builder._outputSchema.parse(result);
+      try {
+        result = builder._outputSchema.parse(result);
+      } catch (e) {
+        debug('program', 'Output validation failed: %o', e);
+        throw e; // Re-throw ZodError
+      }
     }
     return result;
   };
