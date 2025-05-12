@@ -96,7 +96,9 @@ function createFunctionProxy(code: string): any {
   `;
   let moduleNS: any;
   try {
-    moduleNS = vm.runInThisContext(wrappedCode);
+    const sandbox = { exports: {} };
+    vm.createContext(sandbox);
+    moduleNS = vm.runInContext(wrappedCode, sandbox);
   } catch (e: any) {
     debug('program', "Error executing VM: %O", e);
     throw new Error(`Error executing generated code: ${e.message}`);

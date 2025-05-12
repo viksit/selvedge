@@ -656,7 +656,10 @@ export class Store {
 
     try {
       await this.ensureDir(typeDir);
-      return await fsPromises.readdir(typeDir);
+      const entries = await fsPromises.readdir(typeDir, { withFileTypes: true } as any);
+      return entries
+        .filter((d: any) => d.isDirectory && d.isDirectory())
+        .map((d: any) => d.name);
     } catch (error: unknown) {
       const err = error as Error;
       throw new Error(`Failed to list ${type}s: ${err.message}`);
