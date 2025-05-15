@@ -33,6 +33,7 @@ export interface ModelDefinition {
  * The core Selvedge instance interface
  */
 export interface SelvedgeInstance {
+  [x: string]: any;
   /**
    * Register models with simple alias names
    */
@@ -138,7 +139,13 @@ export interface SelvedgeInstance {
    * Create a Chain of Thought prompt
    */
   ChainOfThought: (strings: TemplateStringsArray, ...values: any[]) => PromptTemplate<any, PromptVariables>;
+
+  /**
+   * Optimise a prompt template using the given optimiser spec
+   */
+  optimize: OptimizeFn;
 }
+
 
 /**
  * Type for the schema helper functions provided by Selvedge.
@@ -188,3 +195,12 @@ export interface ModelAdapter {
   /** Optional method to set mock responses for testing */
   setResponses?(responses: { completion?: string; chat?: string | ((messages: any[]) => string); promptMap?: Record<string, string> }): void;
 }
+
+/** Helper namespace exported from ./optimize (e.g., fewShot) */
+type OptimizeHelpers = typeof import('./optimize');
+
+/** Callable optimise function merged with helpers */
+type OptimizeFn = (<TOut = any, TIn = any>(
+  target: import('./prompts/types').PromptTemplate<TOut, TIn>,
+  optimizer: import('./optimize/types').OptimizerSpec<import('./prompts/types').PromptTemplate<TOut, TIn>>
+) => Promise<import('./prompts/types').PromptTemplate<TOut, TIn>>) & OptimizeHelpers;
