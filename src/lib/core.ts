@@ -9,6 +9,31 @@ import { store } from './storage';
 import { flow as createFlow } from './flow';
 import { enableDebug, enableNamespace, parseDebugString, debug } from './utils/debug';
 import schemaHelpers from './schema'; // Import the schema helpers
+import * as optimizeModule from './optimize';
+import { OptimizerSpec } from './optimize/types';
+
+// --- optimisation wrapper (placed *before* selvedge object) -------------
+const optimizeFn: any = async (
+  target: PromptTemplate<any, any>,
+  optimizer: OptimizerSpec<PromptTemplate<any, any>>,
+) => {
+  if (!optimizer || typeof optimizer.run !== 'function') {
+    throw new Error('Second argument to s.optimize must be an OptimizerSpec with a .run() method');
+  }
+  return optimizer.run(target);
+};
+// Attach helper constructors like fewShot onto the function object
+Object.assign(optimizeFn, optimizeModule);
+// Ensure the key helpers are enumerable (in case Object.assign skipped)
+if (!Object.prototype.hasOwnProperty.call(optimizeFn, 'fewShot') && 'fewShot' in optimizeModule) {
+  Object.defineProperty(optimizeFn, 'fewShot', {
+    value: (optimizeModule as any).fewShot,
+    writable: false,
+    enumerable: true,
+    configurable: false,
+  });
+}
+// ------------------------------------------------------------------------
 
 /**
  * The main Selvedge instance that provides access to all library functionality
@@ -80,7 +105,6 @@ export const selvedge: SelvedgeInstance = {
   flow<TInput = any, TOutput = any>(
     steps: Array<any>
   ) {
-    // Use the existing flow implementation from the flow module
     return createFlow<TInput, TOutput>(...steps);
   },
 
@@ -435,6 +459,11 @@ export const selvedge: SelvedgeInstance = {
    */
   ChainOfThought: (t: TemplateStringsArray, ...v: any[]) =>
     selvedge.prompt(t, ...v).prefix('Think step-by-step before answering.\n'),
+
+  /**
+   * Optimisation entry-point
+   */
+  optimize: optimizeFn,
 
 };
 

@@ -27,6 +27,8 @@ export * from './lib/core';
 export * from './lib/types';
 export * from './lib/prompts';
 export * from './lib/schema';
+export * as optimize from './lib/optimize';
+export * as metric   from './lib/optimize/metric';
 export { ModelRegistry } from './lib/models';
 export { Store, store } from './lib/storage';
 export { SelvedgeManager, manager } from './lib/manager';
