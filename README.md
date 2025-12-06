@@ -36,6 +36,34 @@ Selvedge is a TypeScript-first DSL that wraps the moving parts of LLM applicatio
 - **Optimization** helpers (e.g., few-shot tuning) in `lib/optimize` to iteratively improve prompts.
 - **Storage and management** layers in `lib/storage` and `lib/manager` for sharing state and coordinating runs.
 
+#### Technical architecture (under the hood)
+
+- **Typed artifacts everywhere**: Prompts (`lib/prompts`) pair template strings with TypeScript input/output generics, and schemas (`lib/schema`) expose runtime validators that are reused by flows and programs. This keeps model I/O consistent from authoring time through runtime execution.
+- **Execution kernel**: Flows (`lib/flow`) normalize every step (prompt, transform, filter, validator) into a uniform async function signature. The kernel sequences these steps, threads context between them, and short-circuits on failed guards or validations.
+- **Program synthesis loop**: Program builders (`lib/programs`) translate high-level specifications into generated code, then invoke providers via the same flow engine. Optimizers (`lib/optimize`) can re-run flows with modified prompts/models and compare scored outcomes.
+- **Model provider interface**: Providers in `lib/providers` implement a small contract (`invoke(prompt, options) -> result`) that the model registry wraps with metadata (e.g., name, capabilities, cost). Swapping OpenAI vs. Anthropic vs. mock backends is a registry change, not a code change.
+- **State and coordination**: The manager (`lib/manager`) tracks run metadata and exposes hooks for logging/telemetry. Storage drivers (`lib/storage`) offer pluggable persistence for caching intermediate artifacts, allowing reproducible runs and offline fixtures.
+- **Isolation via namespaces**: `src/index.ts` merges the subsystems behind a single namespace so consumers can opt into only the pieces they need while keeping internal modules loosely coupled.
+
+```
+User input
+   |
+   v
+[Flow / Program]
+   |  (normalizes steps, applies validators)
+   v
+[Execution kernel]
+   |  (resolves model alias -> provider)
+   v
+[Provider]
+   |  (LLM call, streaming, tooling hooks)
+   v
+[Manager & Storage]
+   |  (persist, log, reuse artifacts)
+   v
+Structured result back to caller
+```
+
 ### Architecture at a glance
 
 The library layers are small and composable. At runtime you usually interact with the merged `selvedge` export from `src/index.ts`, while each subsystem stays focused on a single responsibility:
